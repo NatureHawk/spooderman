@@ -1,0 +1,4 @@
+PASS roof/wall partition: 31691 roof triangles, 603 pitched
+PASS actual-city supported placements {"hvac":579,"vent":767,"hatch":504,"tank":26,"antenna":53,"signframe":8,"roofcap":61,"service":12} colliders 20264 prop draws 24 prop triangles 2096912
+PASS courtyard and unsupported equipment rejection
+PASS roof equipment supports landing and web-anchor raycasts

@@ -1,0 +1,1 @@
+Build only the main `THREADLINE.html` for gameplay changes unless the user explicitly requests another output. Other `THREADLINE_*.html` files belong to separate worktrees; do not rebuild them as part of routine changes here.

@@ -1,0 +1,7 @@
+{
+  "name": "threadline-multi",
+  "private": true,
+  "version": "1.0.0",
+  "description": "THREADLINE multiplayer: static game + WebRTC signaling function",
+  "engines": { "node": ">=18" }
+}

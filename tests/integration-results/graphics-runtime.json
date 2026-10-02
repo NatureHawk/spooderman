@@ -1,0 +1,138 @@
+{
+  "scenes": [
+    {
+      "scene": "street",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 304,
+      "visible": 99
+    },
+    {
+      "scene": "roof",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 311,
+      "visible": 128
+    },
+    {
+      "scene": "skyline",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 265,
+      "visible": 18
+    },
+    {
+      "scene": "trees",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 279,
+      "visible": 145
+    },
+    {
+      "scene": "rain",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 322,
+      "visible": 141
+    },
+    {
+      "scene": "hero",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 265,
+      "visible": 49
+    },
+    {
+      "scene": "night",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 333,
+      "visible": 115
+    },
+    {
+      "scene": "canyon",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 351,
+      "visible": 159
+    },
+    {
+      "scene": "street_old",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 311,
+      "visible": 190
+    },
+    {
+      "scene": "shopfront",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 316,
+      "visible": 159
+    },
+    {
+      "scene": "shopnight",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 315,
+      "visible": 163
+    },
+    {
+      "scene": "heroclose",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 265,
+      "visible": 23
+    },
+    {
+      "scene": "heroback",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 265,
+      "visible": 24
+    },
+    {
+      "scene": "treeclose",
+      "pixels": 0,
+      "max": 0,
+      "cells": 2229,
+      "passages": 34,
+      "live": 285,
+      "visible": 129
+    }
+  ],
+  "memory": {
+    "textures": 0,
+    "framebuffers": 0,
+    "renderbuffers": 0,
+    "programsBefore": 107,
+    "programsAfter": 107
+  },
+  "errors": []
+}

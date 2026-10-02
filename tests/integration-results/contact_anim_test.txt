@@ -1,0 +1,45 @@
+PASS WEAVER vault1 @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER vault1 @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER vault1 @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER vault1 @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER speed @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER speed @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER speed @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER speed @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER vault2 @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER vault2 @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER vault2 @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER vault2 @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER stepover @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER stepover @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER stepover @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER stepover @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault1 @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault1 @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault1 @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault1 @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE speed @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE speed @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE speed @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE speed @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault2 @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault2 @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault2 @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE vault2 @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE stepover @30Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE stepover @60Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE stepover @120Hz: support hand on the real top, no limb inside the obstacle, run resumes
+PASS PULSE stepover @variable: support hand on the real top, no limb inside the obstacle, run resumes
+PASS WEAVER L-hand catch: the selected wrist holds the line, the free arm balances (not raised), root turns smoothly
+PASS WEAVER R-hand catch: the selected wrist holds the line, the free arm balances (not raised), root turns smoothly
+PASS PULSE L-hand catch: the selected wrist holds the line, the free arm balances (not raised), root turns smoothly
+PASS PULSE R-hand catch: the selected wrist holds the line, the free arm balances (not raised), root turns smoothly
+PASS slack attached web: no load response, no catch signal, no jerk
+PASS a line that keeps loading and unloading never replays the catch
+PASS pendulum leg drive keeps its timing once the catch has blended (early ascent legs already forward)
+PASS J (retracted Iron Spider arms) survives vaults, rolls, landings and catches
+PASS landing animation starts once per physical landing (standing still does not re-trigger)
+PASS roll: curled body touches down (no floating), emerges upright moving along travel
+PASS pole cling stays its own upright grip (not wall-run, not a rooftop perch)
+
+43 passed

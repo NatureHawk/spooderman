@@ -1,0 +1,33 @@
+PASS anchors attach only to visible collider surfaces above the hero  — 39/40 valid, sky=0
+PASS every candidate ray hit is on real geometry (none in the sky)  — 33 candidates
+PASS swing @1/30: attached, no NaN, stretch<6%, tension>=0 and bounded  — stretch=2.10% T=[0.0,224.0] vmax=24.3 nanResets=0
+PASS swing @1/60: attached, no NaN, stretch<6%, tension>=0 and bounded  — stretch=0.78% T=[0.0,224.0] vmax=24.4 nanResets=0
+PASS swing @1/120: attached, no NaN, stretch<6%, tension>=0 and bounded  — stretch=1.18% T=[0.0,224.0] vmax=24.5 nanResets=0
+PASS swing @1/240: attached, no NaN, stretch<6%, tension>=0 and bounded  — stretch=1.16% T=[0.0,224.0] vmax=24.5 nanResets=0
+PASS swing @variable: attached, no NaN, stretch<6%, tension>=0 and bounded  — stretch=2.78% T=[0.0,224.0] vmax=24.4 nanResets=0
+PASS slack rope applies zero force (never pushes)  — T=0
+PASS stretched rope pulls toward the anchor  — T=224.0 vy=-3.133
+PASS release keeps the actual physical velocity (no scripted vector)  — v=21.56 m/s
+PASS ideal pendulum conserves energy (no gain, small damper loss)  — gain=0.006% loss/8s=0.3%
+PASS chain five swings without landing  — swings=5 traveled=190 m, state=air
+PASS each release preserves momentum (Δv only from 1 substep of gravity/drag)  — 0.14,0.14,0.14,0.14,0.15
+PASS no tunneling through a 0.3 m pole at 60 m/s  — z=99.47 x=0.00
+PASS no tunneling into a building at 60 m/s  — z=-49.62 state=recovery
+PASS no tunneling through a 0.3 m pole at 100 m/s  — z=99.51 x=0.00
+PASS no tunneling into a building at 100 m/s  — z=-49.62 state=air
+PASS no tunneling through a 0.3 m pole at 140 m/s  — z=99.47 x=0.00
+PASS no tunneling into a building at 140 m/s  — z=-49.62 state=air
+PASS moving anchor (crane jib) tracked in target-local space every step  — maxErr=0.0e+0 stretch=0.79 anchorVel=3.7 m/s
+PASS moving anchor (drone) tracked in target-local space every step  — maxErr=0.0e+0 stretch=0.88 anchorVel=30.2 m/s
+PASS light anchors receive mass-aware reaction impulses (drone pulled)  — drone dv=32.47
+PASS sprint into wall -> wall run -> crawl -> crest onto roof  — states=air>ground>wallrun>wallcrawl>vault y=46.0 final=ground
+PASS glide produces lift (glide ratio > 2.5), no free flight  — ratio=6.31 drop=83m speed=38.1
+PASS glide pull-up converts speed to altitude and stalls  — gain=32.0m stall=true
+PASS swing → trick → glide → dive → swing → point launch → wall run → slingshot, never stuck  — done=swing > trick > glide > dive > swing2 > launch > wallrun > slingshot | t=28.7s stuck=0.00 final=air z=879 y=1
+PASS slingshot: pull back stores tension, release launches toward the anchors  — pull=5.9m vmax=25.8 vz=23.3 peakY=8.1
+PASS anchor search falls back to a hemisphere sweep when the cone is empty  — score -51 anchor 30,94,710 d=61
+PASS fast fallback never picks an anchor well behind the hero  — none
+PASS release boost adds speed along the travel heading, more forward than up  — dH=5.4 dVy=1.2
+PASS slow release boost goes where the camera looks  — dVx=3.7 dVz=0.0
+
+31 passed, 0 failed

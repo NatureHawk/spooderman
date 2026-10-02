@@ -1,0 +1,20 @@
+{
+  "build": "THREADLINE.html",
+  "sha256": "97BD0E0BE58FD4D3249EF80D6E777DB854057C93BF945E3EE538E6CDBB948607",
+  "backup": "integration-backups/graphics-20261002-154150",
+  "source": "C:/Users/PRIYANSHU/Pictures/spooderman_gfx",
+  "appliedPatches": 7,
+  "nodeSuitesPassed": 11,
+  "filterCases": 84,
+  "filterChangedPixels": 0,
+  "cullingScenes": 14,
+  "cullingChangedPixels": 0,
+  "environmentUpdates": 10,
+  "netGpuTextures": 0,
+  "netGpuFramebuffers": 0,
+  "netGpuRenderbuffers": 0,
+  "shaderProgramsBefore": 107,
+  "shaderProgramsAfter": 107,
+  "precompilationAdded": false,
+  "notes": "Existing animation/contact/route work was already in main and preserved. FPS tables from the handoff were not remeasured."
+}

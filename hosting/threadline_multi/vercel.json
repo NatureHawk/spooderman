@@ -1,0 +1,4 @@
+{
+  "rewrites": [{ "source": "/", "destination": "/THREADLINE_multi.html" }],
+  "functions": { "api/signal.js": { "maxDuration": 10 } }
+}

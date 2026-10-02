@@ -1,0 +1,409 @@
+[
+  {
+    "scene": "street",
+    "high": {
+      "calls": 668,
+      "tris": 1311858,
+      "geos": 871,
+      "texs": 111,
+      "progs": 92,
+      "w": 1280,
+      "h": 720,
+      "ms": 15.586666663487753
+    },
+    "baseline": {
+      "calls": 664,
+      "tris": 1166886,
+      "geos": 871,
+      "texs": 111,
+      "progs": 102,
+      "w": 896,
+      "h": 503,
+      "ms": 10.440000001589457
+    },
+    "low": {
+      "calls": 181,
+      "tris": 479654,
+      "geos": 871,
+      "texs": 111,
+      "progs": 102,
+      "w": 896,
+      "h": 503,
+      "ms": 8.193333331743876
+    },
+    "changed": false,
+    "pixels": 0,
+    "draws": [
+      {
+        "name": "Mesh",
+        "asset": "VEH_sedan",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 74995
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 27080
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 22044
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 17184
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "PULSE",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11674
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_taxi",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11472
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_police",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 10148
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "WEAVER",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 9215
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_moto",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 7952
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "WEAVER",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 7108
+      },
+      {
+        "name": "Rooftop hvac",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 6264
+      },
+      {
+        "name": "Rooftop cornice",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 5712
+      }
+    ],
+    "skin": {
+      "before": 53220,
+      "after": 25827
+    },
+    "shellTriangles": {
+      "before": 38124,
+      "after": 38124
+    },
+    "errors": []
+  },
+  {
+    "scene": "roof",
+    "high": {
+      "calls": 1201,
+      "tris": 2251285,
+      "geos": 1537,
+      "texs": 113,
+      "progs": 102,
+      "w": 1280,
+      "h": 720,
+      "ms": 18.833333333333332
+    },
+    "baseline": {
+      "calls": 1192,
+      "tris": 2044609,
+      "geos": 1537,
+      "texs": 113,
+      "progs": 102,
+      "w": 896,
+      "h": 503,
+      "ms": 13.766666666666667
+    },
+    "low": {
+      "calls": 271,
+      "tris": 654925,
+      "geos": 1537,
+      "texs": 113,
+      "progs": 102,
+      "w": 896,
+      "h": 503,
+      "ms": 9.706666668256124
+    },
+    "changed": false,
+    "pixels": 0,
+    "draws": [
+      {
+        "name": "Mesh",
+        "asset": "VEH_sedan",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 104993
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_taxi",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 45888
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 27080
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 22044
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 17184
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_wheel_cv",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 12900
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "PULSE",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11674
+      },
+      {
+        "name": "Rooftop hvac",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11484
+      },
+      {
+        "name": "Rooftop cornice",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 9456
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "WEAVER",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 9215
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_wheel_car",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 8792
+      },
+      {
+        "name": "Rooftop cornice",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 8400
+      }
+    ],
+    "skin": {
+      "before": 53220,
+      "after": 25827
+    },
+    "shellTriangles": {
+      "before": 38124,
+      "after": 38124
+    },
+    "errors": []
+  },
+  {
+    "scene": "skyline",
+    "high": {
+      "calls": 1078,
+      "tris": 1720319,
+      "geos": 1558,
+      "texs": 113,
+      "progs": 102,
+      "w": 1280,
+      "h": 720,
+      "ms": 17.366666666666667
+    },
+    "baseline": {
+      "calls": 1073,
+      "tris": 1580284,
+      "geos": 1558,
+      "texs": 113,
+      "progs": 102,
+      "w": 896,
+      "h": 503,
+      "ms": 13.259999998410542
+    },
+    "low": {
+      "calls": 207,
+      "tris": 341250,
+      "geos": 1558,
+      "texs": 113,
+      "progs": 102,
+      "w": 896,
+      "h": 503,
+      "ms": 8.92666666507721
+    },
+    "changed": false,
+    "pixels": 0,
+    "draws": [
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 27080
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 22044
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 17184
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "PULSE",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11674
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_taxi",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11472
+      },
+      {
+        "name": "Rooftop cornice",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 9984
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "WEAVER",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 9215
+      },
+      {
+        "name": "Rooftop cornice",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 7896
+      },
+      {
+        "name": "Rooftop hvac",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 7308
+      },
+      {
+        "name": "Rooftop hvac",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 7308
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "WEAVER",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 7108
+      },
+      {
+        "name": "Rooftop cornice",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 6768
+      }
+    ],
+    "skin": {
+      "before": 53220,
+      "after": 25827
+    },
+    "shellTriangles": {
+      "before": 38124,
+      "after": 38124
+    },
+    "errors": []
+  }
+]

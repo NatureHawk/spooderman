@@ -1,0 +1,139 @@
+[
+  {
+    "scene": "roof",
+    "high": {
+      "calls": 1212,
+      "tris": 2269252,
+      "geos": 1397,
+      "texs": 112,
+      "progs": 97,
+      "w": 1280,
+      "h": 720,
+      "ms": 19.27999999920527
+    },
+    "baseline": {
+      "calls": 1201,
+      "tris": 2060087,
+      "geos": 1397,
+      "texs": 112,
+      "progs": 103,
+      "w": 896,
+      "h": 503,
+      "ms": 14.213333332538605
+    },
+    "low": {
+      "calls": 280,
+      "tris": 670403,
+      "geos": 1397,
+      "texs": 112,
+      "progs": 103,
+      "w": 896,
+      "h": 503,
+      "ms": 10.160000002384185
+    },
+    "changed": false,
+    "pixels": 0,
+    "draws": [
+      {
+        "name": "Mesh",
+        "asset": "VEH_sedan",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 74995
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_taxi",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 57360
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 27080
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 22044
+      },
+      {
+        "name": "Mesh",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 17184
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_truck",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 13740
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "PULSE",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11674
+      },
+      {
+        "name": "Rooftop hvac",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 11484
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_van",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 10132
+      },
+      {
+        "name": "Rooftop cornice",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 9456
+      },
+      {
+        "name": "SkinnedMesh",
+        "asset": "WEAVER",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 9215
+      },
+      {
+        "name": "Mesh",
+        "asset": "VEH_wheel_car",
+        "parent": "",
+        "scan": false,
+        "ground": false,
+        "tris": 8792
+      }
+    ],
+    "skin": {
+      "before": 53220,
+      "after": 25827
+    },
+    "shellTriangles": {
+      "before": 38124,
+      "after": 38124
+    },
+    "errors": []
+  }
+]

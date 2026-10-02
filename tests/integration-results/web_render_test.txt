@@ -1,0 +1,17 @@
+PASS L chooses its own side and keeps the requested wrist
+PASS L falls back across the body without changing wrist
+PASS R chooses its own side and keeps the requested wrist
+PASS R falls back across the body without changing wrist
+PASS empty sky never creates a web
+PASS preferred side survives an attractive opposite-side cone hit
+PASS hand transfer has one web and preserves instantaneous momentum
+PASS release Shift cancels a travelling web before attachment
+PASS single hand swing stays finite through repeated left/right transfers
+PASS single mode Shift alone does not fire; each mouse button chooses its hand
+PASS ordinary clicks still attack and aim without Shift
+PASS multi mode keeps the original Shift-only input and toggle option
+PASS hand-transfer animation does not trigger a release flip
+PASS both actual hero skeletons animate both hands and cross-body attachments without invalid transforms
+
+14 passed
+PASS silk filaments, settling shot ripple, anchored endpoints, vertical/zero-length lines, release cleanup, removed text prompt

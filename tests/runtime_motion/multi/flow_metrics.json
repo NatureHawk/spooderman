@@ -1,0 +1,11 @@
+{
+  "maxRootStep": 0.20144795231369395,
+  "errors": [],
+  "remoteSamples": 300,
+  "remoteStates": [
+    "swing",
+    "air",
+    "glide",
+    "dive"
+  ]
+}

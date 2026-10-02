@@ -1,0 +1,70 @@
+{
+  "results": [
+    {
+      "quality": "low",
+      "range": 280,
+      "forward": 120,
+      "maxWarm": 1,
+      "pending": 0,
+      "render": {
+        "calls": 312,
+        "tris": 676826,
+        "geos": 670,
+        "texs": 92,
+        "progs": 67,
+        "w": 672,
+        "h": 378
+      }
+    },
+    {
+      "quality": "medium",
+      "range": 480,
+      "forward": 160,
+      "maxWarm": 1,
+      "pending": 2,
+      "render": {
+        "calls": 658,
+        "tris": 1485599,
+        "geos": 1179,
+        "texs": 95,
+        "progs": 69,
+        "w": 816,
+        "h": 459
+      }
+    },
+    {
+      "quality": "high",
+      "range": 640,
+      "forward": 200,
+      "maxWarm": 2,
+      "pending": 0,
+      "render": {
+        "calls": 950,
+        "tris": 1971366,
+        "geos": 1658,
+        "texs": 104,
+        "progs": 106,
+        "w": 960,
+        "h": 540
+      }
+    },
+    {
+      "quality": "ultra",
+      "range": 900,
+      "forward": 240,
+      "maxWarm": 2,
+      "pending": 0,
+      "render": {
+        "calls": 1233,
+        "tris": 2164669,
+        "geos": 2003,
+        "texs": 113,
+        "progs": 108,
+        "w": 960,
+        "h": 540
+      }
+    }
+  ],
+  "colliders": 49706,
+  "errors": []
+}

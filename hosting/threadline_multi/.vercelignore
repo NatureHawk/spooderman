@@ -1,0 +1,5 @@
+.env*
+.agents
+.claude
+skills-lock.json
+README.md

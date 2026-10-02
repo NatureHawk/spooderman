@@ -1,0 +1,842 @@
+[
+ {
+  "scene": "street",
+  "far": "default",
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": "default",
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": "default",
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": "default",
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": "default",
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": "default",
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": 840,
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": 840,
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": 840,
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": 840,
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": 840,
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "street",
+  "far": 840,
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": "default",
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": "default",
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": "default",
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": "default",
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": "default",
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": "default",
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": 840,
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": 840,
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": 840,
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": 840,
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": 840,
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "roof",
+  "far": 840,
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": "default",
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": "default",
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": "default",
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": "default",
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": "default",
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": "default",
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": 840,
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": 840,
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": 840,
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": 840,
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": 840,
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "skyline",
+  "far": 840,
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": "default",
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": "default",
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": "default",
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": "default",
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": "default",
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": "default",
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": 840,
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": 840,
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": 840,
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": 840,
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": 840,
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "trees",
+  "far": 840,
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": "default",
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": "default",
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": "default",
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": "default",
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": "default",
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": "default",
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": 840,
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": 840,
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": 840,
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": 840,
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": 840,
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "rain",
+  "far": 840,
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": "default",
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": "default",
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": "default",
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": "default",
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": "default",
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": "default",
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": 840,
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": 840,
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": 840,
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": 840,
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": 840,
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "hero",
+  "far": 840,
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": "default",
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": "default",
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": "default",
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": "default",
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": "default",
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": "default",
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": 840,
+  "style": 1,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": 840,
+  "style": 1,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": 840,
+  "style": 1,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": 840,
+  "style": 2,
+  "level": 1,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": 840,
+  "style": 2,
+  "level": 2,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ },
+ {
+  "scene": "night",
+  "far": 840,
+  "style": 2,
+  "level": 3,
+  "diffPx": 0,
+  "maxD": 0,
+  "meanD": 0,
+  "px": 1440000
+ }
+]

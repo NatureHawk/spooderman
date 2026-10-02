@@ -1,0 +1,19 @@
+PASS countdown holds the hero frozen, GO releases it
+PASS fast movement cannot skip a gate (8 m/s per frame-step of 0.13 m)
+PASS fast movement cannot skip a gate (60 m/s per frame-step of 1.00 m)
+PASS fast movement cannot skip a gate (140 m/s per frame-step of 2.33 m)
+PASS one huge frame step straight through the gate still counts (swept segment)
+PASS backward crossing is rejected
+PASS crossing beside the ring is a miss with a readable recovery hint, then passing through counts
+PASS a later checkpoint never counts before the current one
+PASS perch finish needs a real perch, not a fly-through
+PASS restart clears timer, checkpoints, bonuses, markers, freeze and overlays
+PASS timer advances only by the frames it is updated (pause = not updated: no time passes)
+PASS medals by time, score dominated by time, PB kept and saved
+PASS save snapshot / apply round-trips route bests
+PASS bonuses: capped per kind, repeats diminish, trick only after a controlled recovery
+PASS near misses: need speed and clearance, never contact, once per object (no farming)
+PASS shipped routes: three, ordered checkpoints, sane radii, medal order, gate normals unit length
+PASS free roam untouched without an active route (no markers, no freeze, no HUD time)
+
+17 passed, 0 failed

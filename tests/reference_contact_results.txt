@@ -1,0 +1,43 @@
+PASS WEAVER: waist rail -> one-hand vault, hand on the actual top, run continues  — kinds=vault1 hand=L z=17.06 v=8.5 st=ground
+PASS WEAVER: vault body never intersects the rail  — pen=0.000
+PASS WEAVER: blocked exit rejects the vault (stops before the rail)  — states=ground z=5.47
+PASS WEAVER: low pipe -> step-over keeps travel  — kinds=stepover z=13.70 v=8.5
+PASS WEAVER: sprint -> lateral speed vault preserves speed  — kinds=speed v=14.5
+PASS WEAVER: chest-high block -> two-hand vault, lands beyond  — kinds=vault2 z=18.69 st=ground
+PASS WEAVER: two-hand vault body clear of the block  — pen=0.000
+PASS WEAVER: deep 1.5 m unit -> mantle onto its top  — kinds=mantle y=2.46 st=ground
+PASS WEAVER: mantle body clear of the unit  — pen=0.000
+PASS PULSE: waist rail -> one-hand vault, hand on the actual top, run continues  — kinds=vault1 hand=L z=19.06 v=9.6 st=ground
+PASS PULSE: vault body never intersects the rail  — pen=0.000
+PASS PULSE: blocked exit rejects the vault (stops before the rail)  — states=ground z=5.47
+PASS PULSE: low pipe -> step-over keeps travel  — kinds=stepover z=15.29 v=9.6
+PASS PULSE: sprint -> lateral speed vault preserves speed  — kinds=speed v=17.5
+PASS PULSE: chest-high block -> two-hand vault, lands beyond  — kinds=vault2 z=21.05 st=ground
+PASS PULSE: two-hand vault body clear of the block  — pen=0.000
+PASS PULSE: deep 1.5 m unit -> mantle onto its top  — kinds=mantle y=2.46 st=ground
+PASS PULSE: mantle body clear of the unit  — pen=0.000
+PASS walking into a roof-edge parapet stops on the roof (no step onto it, no vault off the building)  — states=ground y=30.9 z=9.24
+PASS a running vault carries over the parapet into the air  — kinds=stepover st=air z=17.05
+PASS 16 m/s into a thin 3.2 m wall at 30 Hz: no vault, no tunnelling  — maxz=5.52
+PASS 16 m/s into a thin 3.2 m wall at 60 Hz: no vault, no tunnelling  — maxz=5.52
+PASS 16 m/s into a thin 3.2 m wall at 120 Hz: no vault, no tunnelling  — maxz=5.52
+PASS variable frame-time steps: vault completes and stays clear  — z=64.88
+PASS jump pressed mid-vault is buffered and fires on the exit
+PASS crawl to the roof edge -> climb over the parapet lip onto the roof  — kinds=climb st=ground y=20.96 z=4.76
+PASS climb-over body clear of building and parapet  — pen=0.000
+PASS outer corner: smooth arc around the edge (no 90 degree snap), contact kept  — seen=true maxTurnPerStep=0.083 edge=0.38..0.41 n=1.00,0.00 st=air
+PASS sprinting into a tall building still starts a wall run  — states=ground,wallrun,wallcrawl
+PASS small drop, no input -> gentle/crouch landing, exactly one event over 2 s standing  — n=1 kind=crouch impact=8.5
+PASS moving landing -> run landing, keeps running  — kind=run v=9.6
+PASS medium drop, no input -> crouch  — kind=crouch impact=15.8
+PASS high drop, no momentum -> heavy landing, one hardland event, recovers  — kind=heavy impact=46.2 st=ground
+PASS fast forward landing with open space -> roll, emerges moving along travel  — kind=roll impact=19.8 hs=15.0 v=9.6
+PASS wall 2.5 m past the landing -> no roll, never through the wall  — kind=crouch maxz=-1.01 face=-0.67
+PASS roof edge just ahead -> no roll off it  — kind=crouch z=-1.38 edge=-0.97
+PASS edge at the end of the roll -> braked on the roof  — kind=roll z=0.87 edge=0.93
+PASS narrow parapet top -> narrow-support perch on it  — kind=narrow st=perch pz=0.19
+PASS narrow opening the tucked body fits: tuck, pass through, untuck after  — tucked=true z=18.90 shape=stand
+PASS tucked pass never intersects the blocks  — pen=0.000
+PASS opening smaller than the tucked body: no tuck, no pass-through  — tucked=false z=8.60
+
+41 passed, 0 failed
