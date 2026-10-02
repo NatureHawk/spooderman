@@ -122,14 +122,16 @@ TL.TreeMaterials = function (renderer, data) {
     sh.uniforms.uSunV = U.uSunV; sh.uniforms.uSunC = U.uSunC;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n varying float vAO; uniform vec3 uSunV; uniform vec3 uSunC;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n' + ALPHA + '\n diffuseColor.rgb *= 0.42 + 0.58 * vAO;   // canopy AO floor (graphics pass: was 0.3, interiors read near-black)')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n' + ALPHA + '\n diffuseColor.rgb *= (0.5 + 0.5 * vAO) * 1.12;   // canopy AO floor (graphics pass: was 0.3; life pass 0.5: interiors read green, not black)')
       // foliage lights as a volume: crown normals on both faces (no back-face flip)
       .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n normal = normalize(vNormal);')
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         {
           float tlBack = pow(max(dot(-geometry.viewDir, uSunV), 0.0), 4.0);
           float tlWrap = max(-dot(normal, uSunV), 0.0);
-          reflectedLight.indirectDiffuse += diffuseColor.rgb * uSunC * (tlBack * 0.35 + tlWrap * 0.16) * vAO * vAO;
+          float tlDay = clamp(length(uSunC), 0.0, 1.2);
+          // thin leaves transmit sunlight (back / wrap term) and catch sky light from every side (fill): canopy undersides stay green, not black
+          reflectedLight.indirectDiffuse += diffuseColor.rgb * (uSunC * (tlBack * 0.5 + tlWrap * 0.4) * vAO * vAO + vec3(0.19, 0.25, 0.17) * (0.35 + 0.65 * vAO) * tlDay);
         }`);
   };
   leaf.customProgramCacheKey = () => 'tl-tree-leaf';
@@ -155,6 +157,108 @@ TL.TreeMaterials = function (renderer, data) {
     bark[sp] = m;
   }
   return { U, leaf, leafDepth, bark, barkDepth };
+};
+
+/* ------------------------------------------------------------------ distant impostors
+   Far trees (beyond ~360 m) are single camera-facing billboards. The views are baked at load: every model is rendered from
+   8 azimuths (orthographic, lit from the camera's upper left) into one atlas; at run time a billboard picks the baked view that
+   matches the angle between the camera and the tree's own yaw, so rotating around a far tree still shows its real crown shape.
+   Cost: 1 instanced draw for all of them, 2 triangles per tree. */
+TL.TreeImpostors = {
+  V: 8, T: 96,
+  bake(renderer, data, mats, scene) {
+    const V = this.V, T = this.T, M = data.models, nM = M.length;
+    const rt = new THREE.WebGLRenderTarget(V * T, nM * T, { minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true, format: THREE.RGBAFormat, depthBuffer: true });
+    // saved state
+    const old = { rt: renderer.getRenderTarget(), vp: renderer.getViewport(new THREE.Vector4()), sc: renderer.getScissor(new THREE.Vector4()), st: renderer.getScissorTest(), ac: renderer.autoClear, cc: renderer.getClearColor(new THREE.Color()), ca: renderer.getClearAlpha(), sm: renderer.shadowMap.enabled };
+    const U = mats.U, u0 = { t: U.uTime.value, w: U.uWind.value.clone(), sv: U.uSunV.value.clone(), sc: U.uSunC.value.clone() };
+    U.uTime.value = 0; U.uWind.value.set(0, 0, 0); U.uSunV.value.set(-0.45, 0.65, 0.62).normalize(); U.uSunC.value.setRGB(1.0, 0.98, 0.92);
+    renderer.shadowMap.enabled = false;
+    const sc = new THREE.Scene();
+    sc.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const dl = new THREE.DirectionalLight(0xfff4e0, 1.1); sc.add(dl); sc.add(dl.target);
+    renderer.setRenderTarget(rt); renderer.autoClear = false; renderer.setClearColor(new THREE.Color(0.26, 0.34, 0.2), 0);
+    renderer.setScissorTest(true);
+    const info = [];
+    for (let mi = 0; mi < nM; mi++) {
+      const md = M[mi], L = md.lods[1] || md.lods[0], grp = new THREE.Group();
+      for (const key of ['bark', 'leaf']) {
+        if (!L[key]) continue;
+        const m = new THREE.Mesh(L[key], key === 'leaf' ? mats.leaf : mats.bark[md.sp]); m.frustumCulled = false; grp.add(m);
+      }
+      sc.add(grp);
+      const box = new THREE.Box3(); for (const key of ['bark', 'leaf']) if (L[key]) { L[key].computeBoundingBox(); box.union(L[key].boundingBox); }
+      const rw = Math.max(-box.min.x, box.max.x, -box.min.z, box.max.z), y0 = Math.min(box.min.y, 0), y1 = box.max.y, half = Math.max(rw, (y1 - y0) / 2) * 1.04, ymid = (y0 + y1) / 2;
+      info.push({ half, ymid });
+      const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.1, 400);
+      for (let k = 0; k < V; k++) {
+        const a = k * Math.PI * 2 / V;
+        cam.position.set(Math.sin(a) * 120, ymid, Math.cos(a) * 120); cam.up.set(0, 1, 0); cam.lookAt(0, ymid, 0); cam.updateMatrixWorld(true);
+        // light from the camera's upper left, the same in every view
+        const r = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
+        dl.position.set(Math.sin(a) * 60 - r.x * 40, ymid + 60, Math.cos(a) * 60 - r.z * 40); dl.target.position.set(0, ymid, 0); dl.target.updateMatrixWorld(true);
+        renderer.setViewport(k * T, mi * T, T, T); renderer.setScissor(k * T, mi * T, T, T);
+        renderer.clear(true, true, false);
+        renderer.render(sc, cam);
+      }
+      sc.remove(grp);
+    }
+    // restore
+    renderer.setRenderTarget(old.rt); renderer.setViewport(old.vp); renderer.setScissor(old.sc); renderer.setScissorTest(old.st); renderer.autoClear = old.ac; renderer.setClearColor(old.cc, old.ca); renderer.shadowMap.enabled = old.sm;
+    U.uTime.value = u0.t; U.uWind.value.copy(u0.w); U.uSunV.value.copy(u0.sv); U.uSunC.value.copy(u0.sc);
+    rt.texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    return { rt, info };
+  },
+  /* instanced billboard mesh for up to `cap` trees */
+  create(scene, renderer, data, mats, cap) {
+    const baked = this.bake(renderer, data, mats, scene), V = this.V, nM = data.models.length;
+    const g = new THREE.PlaneGeometry(1, 1);
+    const aImp = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4); aImp.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('aImp', aImp);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { tAtlas: { value: baked.rt.texture }, uSunC: mats.U.uSunC }]),
+      vertexShader: `
+        attribute vec4 aImp;
+        varying vec2 vUv; varying vec3 vTint;
+        #include <fog_pars_vertex>
+        void main() {
+          vec3 base = instanceMatrix[3].xyz;
+          float sx = length(instanceMatrix[0].xyz), sy = length(instanceMatrix[1].xyz);
+          float yaw = atan(-instanceMatrix[0].z, instanceMatrix[0].x);
+          vec3 toCam = cameraPosition - base; float tl = max(length(toCam.xz), 1e-3);
+          vec3 right = vec3(toCam.z, 0.0, -toCam.x) / tl;
+          float rel = atan(toCam.x, toCam.z) - yaw;
+          float k = mod(floor(rel / ${(Math.PI * 2 / V).toFixed(6)} + 0.5), ${V}.0);
+          vUv = vec2((k + position.x + 0.5) / ${V}.0, (aImp.x + position.y + 0.5) / ${nM}.0);
+          vTint = instanceColor;
+          vec3 wp = base + right * (position.x * 2.0 * aImp.y * sx) + vec3(0.0, (aImp.z + position.y * 2.0 * aImp.y) * sy, 0.0);
+          vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: `
+        uniform sampler2D tAtlas; uniform vec3 uSunC;
+        varying vec2 vUv; varying vec3 vTint;
+        #include <common>
+        #include <fog_pars_fragment>
+        void main() {
+          vec4 c = texture2D(tAtlas, vUv);
+          if (c.a < 0.45) discard;
+          float day = clamp(length(uSunC), 0.0, 1.2);
+          gl_FragColor = vec4(c.rgb * vTint * (0.34 + 0.66 * day), 1.0);
+          #include <tonemapping_fragment>
+          #include <encodings_fragment>
+          #include <fog_fragment>
+        }`,
+      fog: true, side: THREE.DoubleSide,
+    });
+    mat.uniforms.tAtlas.value = baked.rt.texture; mat.uniforms.uSunC = mats.U.uSunC;        // UniformsUtils.merge clones textures / colours: point back at the shared ones
+    const mesh = new THREE.InstancedMesh(g, mat, cap);
+    mesh.count = 0; mesh.frustumCulled = false; mesh.matrixAutoUpdate = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.name = 'TREE_IMPOSTORS';
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    scene.add(mesh);
+    return { mesh, aImp, info: baked.info, rt: baked.rt };
+  },
 };
 
 /* ------------------------------------------------------------------ the forest */
@@ -210,14 +314,16 @@ TL.TreeField = class {
       }
       this.groups.push(row);
     }
+    this.imp = null;
+    if (opts.impostors !== false) { try { this.imp = TL.TreeImpostors.create(scene, renderer, data, this.mats, Math.max(1, n)); } catch (e) { TL.logError ? TL.logError(e, 'tree impostors') : console.error(e); } }
     this._frustum = new THREE.Frustum(); this._pm = new THREE.Matrix4(); this._v = new THREE.Vector3();
     this._camPos = new THREE.Vector3(1e9, 0, 0); this._camQ = new THREE.Quaternion(); this.dirty = true;
-    this.stats = { visible: 0, lod: [0, 0, 0] };
+    this.stats = { visible: 0, lod: [0, 0, 0, 0] };
   }
   setQuality(q) {
     this.quality = q;
     const k = { low: 0.55, medium: 0.8, high: 1, ultra: 1.35 }[q] || 1;
-    this.d0 = 42 * k; this.d1 = 150 * k; this.dMax = 900;
+    this.d0 = 42 * k; this.d1 = 150 * k; this.d2 = 360 * k; this.dMax = 1500;
     this.dirty = true;
   }
   /* env: { sunDir (world, towards the sun), sunColor (THREE.Color incl. intensity), wind: THREE.Vector3 (m/s), rain 0..1 } */
@@ -241,8 +347,9 @@ TL.TreeField = class {
     this._frustum.setFromProjectionMatrix(this._pm);
     const F = this._frustum.planes, list = this.list, bs = this.bs, mat = this.mat, tint = this.tint;
     for (const row of this.groups) for (const G of row) G.n = 0;
-    const d0 = this.d0, d1 = this.d1, dM = this.dMax, H = 4;
-    let vis = 0; const lc = this.stats.lod; lc[0] = lc[1] = lc[2] = 0;
+    const d0 = this.d0, d1 = this.d1, d2 = this.imp ? this.d2 : 1e9, dM = this.dMax, H = 4, bounds = [d0, d1, d2];
+    let vis = 0; const lc = this.stats.lod; lc[0] = lc[1] = lc[2] = lc[3] = 0;
+    let ni = 0; const IM = this.imp, mod = this.data.models;
     for (let i = 0; i < list.length; i++) {
       const x = bs[i * 4], y = bs[i * 4 + 1], z = bs[i * 4 + 2], r = bs[i * 4 + 3];
       const dx = x - cp.x, dy = y - cp.y, dz = z - cp.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz) - r;
@@ -252,9 +359,15 @@ TL.TreeField = class {
       if (!inside && d > 30) { this.lod[i] = -1; continue; }         // near trees stay for their shadows
       // hysteresis around the LOD boundaries
       const prev = this.lod[i];
-      let l = d < d0 ? 0 : d < d1 ? 1 : 2;
-      if (prev >= 0 && l !== prev) { const b = l > prev ? (prev === 0 ? d0 : d1) : (l === 0 ? d0 : d1); if (Math.abs(d - b) < H) l = prev; }
+      let l = d < d0 ? 0 : d < d1 ? 1 : d < d2 ? 2 : 3;
+      if (prev >= 0 && l !== prev) { const b = bounds[l > prev ? prev : l]; if (Math.abs(d - b) < H * (b > 200 ? 5 : 1)) l = prev; }
       this.lod[i] = l;
+      if (l === 3) {                                                  // far: baked billboard
+        IM.mesh.instanceMatrix.array.set(mat.subarray(i * 16, i * 16 + 16), ni * 16);
+        IM.mesh.instanceColor.array[ni * 3] = tint[i * 3]; IM.mesh.instanceColor.array[ni * 3 + 1] = tint[i * 3 + 1]; IM.mesh.instanceColor.array[ni * 3 + 2] = tint[i * 3 + 2];
+        const inf = IM.info[list[i].m]; IM.aImp.array[ni * 4] = list[i].m; IM.aImp.array[ni * 4 + 1] = inf.half; IM.aImp.array[ni * 4 + 2] = inf.ymid;
+        ni++; vis++; lc[3]++; continue;
+      }
       const G = this.groups[list[i].m][l]; const o = G.n++;
       G.im.array.set(mat.subarray(i * 16, i * 16 + 16), o * 16);
       G.ic.array[o * 3] = tint[i * 3]; G.ic.array[o * 3 + 1] = tint[i * 3 + 1]; G.ic.array[o * 3 + 2] = tint[i * 3 + 2];
@@ -264,9 +377,10 @@ TL.TreeField = class {
       for (const m of G.parts) m.count = G.n;
       if (G.n) { G.im.needsUpdate = true; G.ic.needsUpdate = true; G.im.updateRange.count = G.n * 16; G.ic.updateRange.count = G.n * 3; }
     }
+    if (IM) { IM.mesh.count = ni; IM.mesh.visible = ni > 0; if (ni) { IM.mesh.instanceMatrix.needsUpdate = true; IM.mesh.instanceColor.needsUpdate = true; IM.aImp.needsUpdate = true; IM.mesh.instanceMatrix.updateRange.count = ni * 16; IM.mesh.instanceColor.updateRange.count = ni * 3; IM.aImp.updateRange.count = ni * 4; } }
     this.stats.visible = vis;
   }
-  dispose() { for (const m of this.meshes) { this.scene.remove(m); m.dispose && m.dispose(); } }
+  dispose() { for (const m of this.meshes) { this.scene.remove(m); m.dispose && m.dispose(); } if (this.imp) { this.scene.remove(this.imp.mesh); this.imp.rt.dispose(); } }
 };
 
 /* ------------------------------------------------------------------ scan-world hooks */
@@ -278,9 +392,12 @@ if (TL.ScanHooks) {
     const T = world.data.trees; if (!T || !T.layout) return;
     try {
       const L = T.layout, names = T.models.map((m) => m.name), idx = L.models.map((n) => names.indexOf(n));
+      // individuals per role (name, name_v2, name_v3 ...): one per tree by a position hash, so a stand does not read as clones
+      const roles = L.models.map((n) => names.reduce((a, m, i) => (m === n || m.indexOf(n + '_v') === 0 ? a.concat(i) : a), []));
       const list = [];
       for (const t of L.trees) {                         // [x, z, model, yaw, scale, sx, r, g, b]
-        const mi = idx[t[2]]; if (mi < 0) continue;
+        let mi = idx[t[2]]; if (mi < 0) continue;
+        const rl = roles[t[2]]; if (rl.length > 1) mi = rl[(Math.abs(Math.floor(t[0] * 73.1 + t[1] * 131.7)) % 997) % rl.length];
         list.push({ x: t[0], y: 0, z: t[1], m: mi, yaw: t[3], s: t[4], sx: t[5], tint: [t[6], t[7], t[8]] });
       }
       world.trees = new TL.TreeField(world.scene, world.game.renderer, T, list, { quality: world.quality });

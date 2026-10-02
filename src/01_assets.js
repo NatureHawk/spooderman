@@ -28,11 +28,12 @@ TL.Assets = {
     this.bin = await new Response(stream).arrayBuffer();
     // user-supplied model packs: heroes (pack 1) and road vehicles (pack 2) — separate binaries + textures, override procedural entries
     this.texImgs = {}; this.packs = {};
-    for (const [id, pk] of [['hero', 1], ['veh', 2]]) {
+    for (const [id, pk] of [['hero', 1], ['veh', 2], ['people', 3], ['props', 4]]) {
       const hj = document.getElementById('tl-' + id + '-json');
       if (!hj || hj.textContent.trim().charAt(0) !== '{') continue;
-      onProgress && onProgress(0.45, 'Decoding ' + (pk === 1 ? 'hero' : 'vehicle') + ' models');
+      onProgress && onProgress(0.45, 'Decoding ' + id + ' models');
       const hm = JSON.parse(hj.textContent);
+      if (hm.people) this.people = hm.people;
       const hb = document.getElementById('tl-' + id + '-bin').textContent.replace(/\s+/g, '');
       const hraw = Uint8Array.from(atob(hb), (c) => c.charCodeAt(0));
       this.packs[pk] = await new Response(new Blob([hraw]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
@@ -157,6 +158,7 @@ TL.Assets = {
         if (s.n) { o.normalMap = this.texture(s.n, false); o.normalScale = new THREE.Vector2(1, -1); }
         if (s.o) { o.roughnessMap = o.metalnessMap = this.texture(s.o, false); o.roughness = 1; o.metalness = 1; }
       } else if (s.c) o.color = new THREE.Color(this.srgb(s.c[0]), this.srgb(s.c[1]), this.srgb(s.c[2]));
+      if (s.a) o.alphaTest = s.a;
       const m = new THREE.MeshStandardMaterial(o); m.userData.texSet = true;
       if (s.e) { m.emissiveMap = this.texture(s.e, true); m.emissive.set(0xffffff); m.emissiveIntensity = 0; m.userData.night = 1.3; }       // lit at night (bus lamps ...)
       else if (s.emit) { m.emissive.copy(m.color); m.emissiveIntensity = 0; m.userData.glow = s.emit; m.userData.flash = s.flash || null; }   // lamps / light bars
@@ -170,7 +172,7 @@ TL.Assets = {
   /* Static mesh for an asset (shared geometry + given material). */
   mesh(name, lod, mat) {
     const g = this.geo(name, lod); if (!g) return null;
-    const m = new THREE.Mesh(g, mat || this.shared('default'));
+    const m = new THREE.Mesh(g, g.userData.tex ? this.texMats(g) : (mat || this.shared('default')));
     m.castShadow = true; m.receiveShadow = true;
     return m;
   },
@@ -196,7 +198,7 @@ TL.Assets = {
       b.userData.rest = b.position.clone();
       b.userData.tail = new THREE.Vector3(d.tail[0] - d.head[0], d.tail[1] - d.head[1], d.tail[2] - d.head[2]);
     }
-    const mesh = new THREE.SkinnedMesh(g, mat);
+    const mesh = new THREE.SkinnedMesh(g, g.userData.tex ? this.texMats(g) : mat);
     const roots = bones.filter((b) => !b.parent);
     roots.forEach((r) => mesh.add(r));
     mesh.updateMatrixWorld(true);
@@ -212,7 +214,7 @@ TL.Assets = {
    Freed slots are swapped with the last live instance to keep the draw range compact. */
 TL.InstanceBatch = class {
   constructor(scene, geo, mat, capacity, opts) {
-    this.mesh = new THREE.InstancedMesh(geo, mat, capacity);
+    this.mesh = new THREE.InstancedMesh(geo, geo.userData.tex ? TL.Assets.texMats(geo) : mat, capacity);
     this.mesh.count = 0;
     this.mesh.castShadow = !(opts && opts.noShadow); this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false;

@@ -69,14 +69,16 @@ TL.Facade = {
     const U = world.mats.uniforms, F = this;
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, { uNight: U.uNight, uWet: U.uWet, uSkyH: U.uSkyH, uSkyZ: U.uSkyZ, uInvExp: TL.invExpU, uFacRec: { value: F.recTex }, uFacCell: { value: F.cellTex } });
+      const BQ = TL.Buildings && TL.Buildings.ok ? TL.Buildings : null;      // building materials + rooms (03l_buildings.js)
+      if (BQ) Object.assign(sh.uniforms, { uBqAlb: BQ.uAlb, uBqNor: BQ.uNor, uBqRec: BQ.uRec });
       sh.uniforms.uSunW = (world.game.env && world.game.env.skyU.uSunDir) || { value: new THREE.Vector3(0, 1, 0) };   // world sun direction
       sh.uniforms.uFacDistance = { value: F.distanceTex || atlas };
       sh.uniforms.uFacDistanceReady = { value: F.distanceTex ? 1 : 0 };
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aFacRec;\nflat varying float vFacRec;\nvarying vec3 vFWP;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacRec = aFacRec;\nvFWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        .replace('#include <common>', '#include <common>\nattribute float aFacRec;\nflat varying float vFacRec;\nvarying vec3 vFWP;\n#ifdef TL_BQ\nattribute float aBld;\nflat varying float vBld;\nflat varying vec3 vBqN;\nattribute vec3 aWallCol;\nflat varying vec3 vWallCol;\nattribute vec4 aWallSpan;\nflat varying vec4 vWallSpan;\n#endif')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacRec = aFacRec;\nvFWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#ifdef TL_BQ\nvBld = aBld;\nvBqN = normalize(mat3(modelMatrix) * objectNormal);\nvWallCol = aWallCol;\nvWallSpan = aWallSpan;\n#endif');
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\n#define TEXW ' + F.meta.texW + '\n#define CELLW ' + F.meta.cellW + '\n' + F.GLSL_COMMON)
+        .replace('#include <common>', '#include <common>\n#define TEXW ' + F.meta.texW + '\n#define CELLW ' + F.meta.cellW + '\n' + F.GLSL_COMMON + (BQ ? BQ.GLSL_COMMON : '\nconst float bqOn = 0.0;\n'))
         .replace('#include <map_fragment>', F.GLSL_MAP)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(mix(0.9, 0.55, uWet), facRough, facGlass);')
         .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = 0.0;')
@@ -86,7 +88,8 @@ TL.Facade = {
         // sky reflection analytically in GLSL_MAP (fresnel on the facade plane) -> cheaper, and never a black hole
         .replace('#include <lights_fragment_maps>', '');
     };
-    m.customProgramCacheKey = () => 'tl-nyc-facade-6';
+    m.customProgramCacheKey = () => 'tl-nyc-facade-6-bq' + ((m.defines && m.defines.TL_BQ) || 0);
+    m.userData.bq = !!(TL.Buildings && TL.Buildings.ok);
     return m;
   },
 };
@@ -114,11 +117,18 @@ float facGlass; float facRough; vec3 facF0; vec3 facWall; vec3 facGlassEmit; vec
 TL.Facade.GLSL_MAP = `
   vec4 facAtl = texture2D(map, vUv);
   facWall = facAtl.rgb; facGlass = 0.0; facRough = 0.08; facF0 = vec3(0.05); facGlassEmit = vec3(0.0); facLamp = vec3(0.0);
+#ifdef TL_BQ
+  bqInit(facAtl.rgb, texture2D(map, vUv, 3.0).rgb);                 // + the photo lightly blurred (~3 m): the wall colour
+  facWall = bqWall;
+#endif
   int facBase = int(vFacRec + 0.5) - 1;
+#ifdef TL_BQ
+  if (bqCurtain > 0.5) facBase = -1;                                 // glass towers: a curtain wall instead (bqCurtainShade)
+#endif
   if (facBase >= 0) {
     // Near walls have only the rebuilt windows. Restore original architectural
     // shading gradually in the distant skyline, where its photo detail reads well.
-    float photoDistance = smoothstep(110.0, 220.0, distance(cameraPosition, vFWP)) * uFacDistanceReady;
+    float photoDistance = smoothstep(110.0, 220.0, distance(cameraPosition, vFWP)) * uFacDistanceReady * (1.0 - bqOn);
     vec3 photoSurface = texture2D(uFacDistance, vUv).rgb;
     vec4 h0 = facRecAt(facBase), h1 = facRecAt(facBase + 1), h2 = facRecAt(facBase + 2), h3 = facRecAt(facBase + 3);
     int typ = int(h0.w + 0.5);
@@ -176,9 +186,12 @@ TL.Facade.GLSL_MAP = `
     float fM = mix(mix(fNear, pres * cov * 0.15, cellFar), h3.z * cov * 0.15 * gridIn, gridFar);
     float rM = rNear * (1.0 - cellFar);
     vec3 wallSurface = facAtl.rgb;
+#ifdef TL_BQ
+    wallSurface = bqWall;
+#endif
     // Material detail belongs to the wall, never to a second window texture.
     // Source palette selects brick vs stone; floor/bay accents follow THIS facade's measured grid.
-    if (typ == 1) {
+    if (typ == 1 && bqOn < 0.5) {                                      // photo walls only: the building materials carry their own courses
       vec3 sourceTone = facRecAt(facBase + 4).rgb;
       float brick = smoothstep(0.055, 0.15, sourceTone.r - sourceTone.b)
         * (1.0 - smoothstep(0.6, 0.8, sourceTone.g));
@@ -191,6 +204,8 @@ TL.Facade.GLSL_MAP = `
       float surfaceFade = (1.0 - smoothstep(course * 0.2, course * 0.65, max(fs, fy))) * (1.0 - photoDistance);
       wallSurface *= 1.0 + (blockTone - 0.5) * mix(0.07, 0.16, brick) * surfaceFade;
       wallSurface *= 1.0 - joints * mix(0.12, 0.2, brick);
+    }
+    if (typ == 1) {
       // Subtle vertical piers and spandrels give the measured bays depth at medium range.
       float pier = max(facBox(s, C.x, C.x + 0.15, fs), facBox(s, C.y - 0.15, C.y, fs));
       float floorSeam = facBox(y, R.x - 0.025, R.x + 0.025, fy);
@@ -215,6 +230,15 @@ TL.Facade.GLSL_MAP = `
     vec3 glassCol = mix(vec3(gl), gc, 0.7) * (typ == 3 ? 0.6 : 0.42);
     glassCol = mix(glassCol, facAtl.rgb * 0.3, gridFar);
     if (typ == 1) glassCol *= 0.7 + 0.3 * smoothstep(0.0, 0.3, R.w - gy);   // lintel shadow inside the recess
+    vec3 roomLit = vec3(1.0);
+#if defined(TL_BQ) && TL_BQ >= 2
+    if (bqOn > 0.5 && cellFar < 0.999 && gM > 0.001) {                                 // a furnished room behind the pane (parallax)
+      vec3 rv = vec3(dot(Vw, vec3(T2.x, 0.0, T2.y)), Vw.y, max(dot(Vw, -N3), 0.05));
+      vec3 room = bqRoom(vec2(gs, gy), rv, C, R, cell, typ, roomLit);
+      glassCol = mix(room, glassCol, cellFar);
+      roomLit = mix(roomLit, vec3(1.0), cellFar);
+    }
+#endif
     // reflectivity: plain window glass ~5 %, curtain-wall coated glass higher and tinted by its real colour
     vec3 tint = gc / max(gl, 1e-3);
     facF0 = typ == 3 ? clamp(mix(vec3(0.16), tint * 0.18, 0.5), 0.08, 0.35) : vec3(typ == 2 ? 0.12 : 0.1);
@@ -226,7 +250,7 @@ TL.Facade.GLSL_MAP = `
     vec3 lamp = (warm < 0.72 ? vec3(1.0, 0.72, 0.42) : vec3(0.82, 0.9, 1.0)) * (0.35 + 0.65 * facHash(cell * 13 + 5));
     float litM = mix(lit, 0.5 * night * h3.z, gridFar);
     facGlassEmit = glassCol * (1.0 - litM);
-    facLamp = lamp * litM * facGlass * 0.9 * uInvExp;
+    facLamp = lamp * roomLit * litM * facGlass * 0.9 * uInvExp;
     // sky / street reflection with fresnel: glass looking up mirrors the sky, looking down the darker street canyon
     vec3 Rr = reflect(Vw, N3);
     float cosT = clamp(dot(-Vw, N3), 0.0, 1.0);
@@ -318,6 +342,9 @@ TL.Facade.GLSL_MAP = `
     facGlass *= 1.0 - photoDistance;
     facLamp *= 1.0 - photoDistance * (1.0 - night);
   }
+#ifdef TL_BQ
+  bqCurtainShade();
+#endif
   // sun-aware walls (graphics pass): the photo carries its capture-time light only. Walls turned away from the game's sun
   // get sky fill (dark navy lifted + partly neutralised), sunlit walls a small direct-light lift; walls only, day only.
   {

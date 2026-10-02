@@ -57,6 +57,23 @@ MODELS = [
     dict(name='linden_young', sp='linden', H=7.5, R=3.1, bole=1.9, rb=0.11, env='ellipsoid', cy=0.58, ry=0.42, limbs=0, leader=0.85,
          pts=1600, di=2.7, dk=0.6, D=0.28, trop=0.12, holes=4, lump=0.2, lfreq=1.7, sag=0.06, card=0.8, clump=1.0, cpc=13, seed=52),
 ]
+def variant(base, suffix, seed, **over):
+    """a second / third individual of the same role: another seed (so another branch skeleton) and slightly different proportions"""
+    m = dict(next(b for b in MODELS if b['name'] == base)); m.update(over); m['name'] = base + suffix; m['seed'] = seed
+    return m
+
+
+# life pass: individuals per role so a park does not read as clones (the layout still names the 8 base roles; 03c_trees.js picks a variant per tree)
+MODELS += [
+    variant('plane_big', '_v2', 15, H=23.5, R=10.8, limbs=4, limb_len=6.0, pts=5400, holes=12),
+    variant('plane_big', '_v3', 16, H=20.5, R=9.2, limbs=3, limb_up=0.62, lump=0.34, pts=5000),
+    variant('plane_street', '_v2', 17, H=16.0, R=6.0, limbs=3, limb_len=3.2, pts=3100),
+    variant('locust_vase', '_v2', 24, H=14.0, R=7.8, limbs=3, limb_len=5.0, holes=14),
+    variant('locust_young', '_v2', 25, H=9.6, R=4.4, limbs=4, limb_len=2.2),
+    variant('oak_pin', '_v2', 33, H=19.5, R=6.6, leader=0.95, pts=4200),
+    variant('elm_vase', '_v2', 43, H=20.0, R=9.6, limbs=3, limb_len=7.4, pts=4600),
+    variant('linden_street', '_v2', 54, H=12.2, R=4.7, leader=0.9, pts=2700),
+]
 SPECIES = TT.SPECIES                        # atlas row order
 
 

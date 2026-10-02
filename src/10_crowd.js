@@ -15,7 +15,7 @@ TL.Ped = class {
   reset() {
     this.alive = true; this.i = 0; this.j = 0; this.t = 0; this.dir = 1; this.speed = 1.3; this.mode = 'walk'; this.modeT = 0;
     this.yaw = 0; this.fear = 0; this.fleeFrom = null; this.skin = null; this.batch = null; this.idx = -1; this.near = false;
-    this.variant = 'm'; this.colors = null; this.hat = false; this.bag = false; this.victim = false; this.jog = false;
+    this.appearance = null; this.variant = 'm'; this.colors = null; this.hat = false; this.bag = false; this.victim = false; this.jog = false;
     this.cross = null; this.react = 0; this.notice=null; this.lookAt=null; this.socialUntil=0;
   }
 };
@@ -30,11 +30,13 @@ TL.CrowdManager = class {
     this.victims = [];
     this.rng = new TL.RNG(game.seed * 7 + 3);
     this.nav = (game.streamer && game.streamer.nav) || null;     // scan map: sidewalk loops around the real blocks
+    this.life = this.nav && game.streamer.crowdNav ? new TL.CrowdLife(this, game.streamer.crowdNav) : null;   // 10d_crowdlife.js: roadmap behaviour (the loops below stay for the grid maps)
     this.lodBatch = null;
     this.t = 0; this.assignT = 0;
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new THREE.Vector3(1, 1, 1); this._c = new THREE.Color();
     const lodName = TL.Assets.has('ped_lod') ? 'ped_lod' : null;
-    if (lodName) {
+    if (TL.People && TL.Assets.people && TL.Assets.people.length) this.lodBatch = TL.People.batches(game, this.max + 20);
+    else if (lodName) {
       const mat = TL.Assets.material({ slots: {}, instBody: true });
       this.lodBatch = new TL.InstanceBatch(game.scene, TL.Assets.geo(lodName, 'lo'), mat, this.max + 20, { color: true, noShadow: true });
     }
@@ -58,6 +60,7 @@ TL.CrowdManager = class {
     return out;
   }
   spawnAround(focus) {
+    if (this.life) return this.life.spawn(focus);
     const L = this.game.layout, rng = this.rng;
     for (let k = 0; k < 8 && this.peds.length < this.max; k++) {
       const a = rng.range(0, Math.PI * 2), d = rng.range(40, 190);
@@ -68,6 +71,7 @@ TL.CrowdManager = class {
       const p = this.pool.get();
       p.i = i; p.j = j; p.t = rng.range(0, 4); p.dir = rng.chance(0.5) ? 1 : -1;
       p.variant = rng.pick(['m', 'm', 'f', 'f', 'h']);
+      if (TL.People) p.appearance = TL.People.choose(p.variant, rng);
       p.jog = rng.chance(0.08);
       p.speed = p.jog ? rng.range(2.8, 3.6) : rng.range(1.1, 1.6);
       p.colors = { shirt: rng.pick(this.palette.shirts), pants: rng.pick(this.palette.pants), skin: rng.pick(this.palette.skin) };
@@ -79,14 +83,14 @@ TL.CrowdManager = class {
     }
   }
   /* ---------------------------------------------------------------- skinned pool for near peds */
-  getSkin(v) {
+  getSkin(v, appearance) {
     const pool = this.skinPool[v];
     const free = pool.find((s) => !s.owner);
-    if (free) return free;
+    if (free) { if (TL.People) TL.People.dress(free, appearance, this.game.quality); return free; }
     if (pool.length >= Math.ceil(this.nearMax / 2) + 2) return null;
     const mat = TL.Assets.material({ slots: {} });
-    const lod = this.game.quality === 'ultra' ? 'hi' : 'mid';
-    const sk = TL.Assets.skinned('PED_' + v, lod, mat); if (!sk) return null;
+    const lod = this.game.quality === 'ultra' ? 'hi' : this.game.quality === 'low' ? 'lo' : 'mid';
+    const sk = TL.Assets.skinned(appearance ? appearance.name : 'PED_' + v, lod, mat); if (!sk) return null;
     sk.mesh.castShadow = this.game.quality !== 'low';
     this.game.scene.add(sk.mesh);
     const s = { sk, mat, anim: new TL.NPCAnimator(sk), owner: null, v, extra: {} };
@@ -94,6 +98,7 @@ TL.CrowdManager = class {
     if (this.umbrellaGeo && hand) { const u = new THREE.Mesh(this.umbrellaGeo, mat); u.position.set(0, -0.08, 0); hand.add(u); s.extra.umbrella = u; }
     if (this.phoneGeo && hand) { const u = new THREE.Mesh(this.phoneGeo, TL.Assets.shared('world')); u.position.set(0, -0.1, 0.03); hand.add(u); s.extra.phone = u; }
     if (this.hatGeo && sk.bones.head) { const u = new THREE.Mesh(this.hatGeo, mat); u.position.set(0, -0.1, 0); sk.bones.head.add(u); s.extra.hat = u; }
+    if (this.bagGeo && sk.bones.handL) { const u = new THREE.Mesh(this.bagGeo, mat); u.position.set(0, -.5, .16); sk.bones.handL.add(u); s.extra.bag = u; }
     pool.push(s);
     return s;
   }
@@ -103,16 +108,18 @@ TL.CrowdManager = class {
     const want = new Set(sorted.slice(0, this.nearMax).filter((p) => p.pos.distanceTo(cam) < 70));
     for (const p of this.peds) if (p.skin && !want.has(p)) { p.skin.owner = null; p.skin.sk.mesh.visible = false; p.skin = null; }
     for (const p of want) if (!p.skin) {
-      const s = this.getSkin(p.variant); if (!s) continue;
+      const s = this.getSkin(p.variant, p.appearance); if (!s) continue;
       s.owner = p; p.skin = s; s.sk.mesh.visible = true;
       TL.Assets.setSlots(s.mat, { 6: p.colors.skin, 7: p.colors.shirt, 2: p.colors.pants });
-      if (s.extra.hat) s.extra.hat.visible = p.hat;
+      if (s.extra.hat) s.extra.hat.visible = p.hat && !/worker|police/.test(p.appearance ? p.appearance.name : '');
+      if (s.extra.bag) s.extra.bag.visible = p.bag;
     }
   }
   /* ---------------------------------------------------------------- update */
   update(dt, focus) {
     const g = this.game;
     this.t += dt;
+    if (this.life) this.life.begin(dt, focus);
     if (this.peds.length < this.max) this.spawnAround(focus);
     const raining = g.env.rain > 0.4;
     const danger = this.dangerPoints();
@@ -136,6 +143,7 @@ TL.CrowdManager = class {
     return out;
   }
   think(p, dt, danger, h, raining) {
+    if (p.L) return this.life.think(p, dt, danger, h, raining);
     const g = this.game;
     p.modeT -= dt; p.react = Math.max(0, p.react - dt);
     // danger: never walk calmly through combat
@@ -207,7 +215,7 @@ TL.CrowdManager = class {
     } else if (p.modeT <= 0) { p.mode = 'walk'; p.speed = p.jog ? 3.2 : 1.3; }
   }
   render(p, dt, raining) {
-    const mode = p.mode === 'look' ? 'look' : p.mode === 'wait' ? 'idle' : p.mode === 'walk' ? (p.jog ? 'run' : 'walk') : p.mode;
+    const mode = p.anim || (p.mode === 'look' ? 'look' : p.mode === 'wait' ? 'idle' : p.mode === 'walk' ? (p.jog ? 'run' : 'walk') : p.mode);
     if (p.skin) {
       const s = p.skin;
       if (!p.lookAt && (p.mode === 'cheer' || p.mode === 'wave' || p.mode === 'photo')) {
@@ -215,24 +223,25 @@ TL.CrowdManager = class {
       }
       s.anim.update(dt, p.pos, p.yaw, p.mode === 'flee' ? 4.5 : p.speed, mode);
       if (s.extra.umbrella) s.extra.umbrella.visible = raining && (mode === 'walk' || mode === 'idle');
-      if (s.extra.phone) s.extra.phone.visible = mode === 'phone' || mode === 'photo';
+      if (s.extra.phone) s.extra.phone.visible = TL.NPC_PHONE_MODES ? TL.NPC_PHONE_MODES.has(mode) : mode === 'phone' || mode === 'photo';
       if (p.batch) p.batch.free(p);
       return;
     }
     if (!this.lodBatch) return;
     this._q.setFromAxisAngle(TL._UP || (TL._UP = new THREE.Vector3(0, 1, 0)), p.yaw);
     const bob = mode === 'walk' || mode === 'flee' || mode === 'run' ? Math.abs(Math.sin(this.t * 8 + p.t * 50)) * 0.05 : 0;
-    this._m.compose(new THREE.Vector3(p.pos.x, p.pos.y + bob - (mode === 'cower' ? 0.5 : 0), p.pos.z), this._q, this._s);
+    this._m.compose(new THREE.Vector3(p.pos.x, p.pos.y + bob - (p.sink || (mode === 'cower' ? 0.5 : 0)), p.pos.z), this._q, this._s);
     if (!p.batch) { this._c.set(p.colors.shirt); this.lodBatch.alloc(p, this._m, this._c); }
     else this.lodBatch.set(p, this._m);
   }
   despawn(p, k) {
+    if (this.life && p.L) this.life.despawn(p);
     if (p.batch) p.batch.free(p);
     if (p.skin) { p.skin.owner = null; p.skin.sk.mesh.visible = false; p.skin = null; }
     this.peds.splice(k, 1); this.pool.release(p);
   }
   /* ---------------------------------------------------------------- events */
-  onHeroLand(pos, impact) { if(this.game.cityLife)this.game.cityLife.emit('land',pos,impact/35); }
+  onHeroLand(pos, impact) { if(this.game.cityLife)this.game.cityLife.emit('land',pos,impact/35); if (this.life) this.life.onLand(pos, impact); }
   celebrate(pos) { if(this.game.cityLife)this.game.cityLife.emit('rescue',pos,1); }
   /* ---------------------------------------------------------------- victims (crimes / missions) */
   spawnVictim(pos, water) {

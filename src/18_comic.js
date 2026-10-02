@@ -35,16 +35,23 @@ TL.Comic = {
     this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this.scene = new THREE.Scene(); this.scene.add(this.quad);
   },
-  render(r, scene, camera) {
-    if (!this.style || !this.level) { TL.ComicLin.value = 0; r.render(scene, camera); return; }
+  /* per-frame filter uniforms; the post stack (21_post.js) also uses this to feed the filter its own colour + depth */
+  setUniforms(r, camera) {
     if (!this.rt) this.init(r);
     r.getDrawingBufferSize(this._sz);
-    if (this.rt.width !== this._sz.x || this.rt.height !== this._sz.y) this.rt.setSize(this._sz.x, this._sz.y);
     const U = this.mat.uniforms;
     U.uRes.value.copy(this._sz); U.uNear.value = camera.near; U.uFar.value = camera.far;
     U.uStyle.value = this.style; U.uStr.value = [0, 0.45, 0.75, 1][this.level];
     U.uScale.value = Math.max(1, this._sz.y / 720);
     U.uNight.value = (TL.game && TL.game.env && TL.game.env.night) || 0;
+    return U;
+  },
+  render(r, scene, camera) {
+    if (!this.style || !this.level) { TL.ComicLin.value = 0; r.render(scene, camera); return; }
+    if (!this.rt) this.init(r);
+    r.getDrawingBufferSize(this._sz);
+    if (this.rt.width !== this._sz.x || this.rt.height !== this._sz.y) this.rt.setSize(this._sz.x, this._sz.y);
+    this.setUniforms(r, camera);
     TL.ComicLin.value = 1;
     const weather = TL.game && TL.game.rain;
     const rainVisible = weather && weather.mesh.visible, snowVisible = weather && weather.snow.visible;
