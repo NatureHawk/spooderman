@@ -24,3 +24,4 @@ hosting/**/node_modules/
 # generated / throwaway (kept local, not in the repo)
 tests/sequence_poses.json
 tests/.browser-profile*/
+music/*.mp3
