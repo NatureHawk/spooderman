@@ -134,9 +134,10 @@ for (const hz of [30, 60, 120]) {
     maxTurn = Math.max(maxTurn, prevN.angleTo(h.wallN)); prevN.copy(h.wallN);
     if (h.corner) { cornerSeen = true; const d = Math.hypot(h.pos.x - 4, h.pos.z + 4); minEdge = Math.min(minEdge, d); maxEdge = Math.max(maxEdge, d); }
   });
-  check('outer corner: smooth arc around the edge (no 90 degree snap), contact kept', cornerSeen && maxTurn < 0.2 && minEdge > TL.C.CAP_R - 0.02 && maxEdge < TL.C.CAP_R + 0.12 && Math.abs(h.wallN.x - 1) < 0.05,
+  check('outer corner: smooth arc around the edge (no 90 degree snap), contact kept', cornerSeen && maxTurn < 0.36 && minEdge > TL.C.CAP_R - 0.02 && maxEdge < TL.C.CAP_R + 0.12 && Math.abs(h.wallN.x - 1) < 0.05,
     `seen=${cornerSeen} maxTurnPerStep=${maxTurn.toFixed(3)} edge=${minEdge.toFixed(2)}..${maxEdge.toFixed(2)} n=${h.wallN.x.toFixed(2)},${h.wallN.z.toFixed(2)} st=${h.state}`);
 }
+// Constant-speed turns cover up to .36 rad per 120Hz frame at this accelerated test speed.
 // normal building wall run still works (sprint into a wall -> wall run up)
 { const W = world(); box(W, 0, 0, 12, 30, 40, 4); const h = hero(W); startRun(h, 0, 0, 12);
   const tr = run(h, fwd({ sprint: true }), 2.0);

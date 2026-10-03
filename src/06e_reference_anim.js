@@ -5,12 +5,20 @@ TL.ReferenceMotion={
   // hip L, knee L, hip R, knee R, leg spread, arm spread, arm angle,
   // elbow bend, torso lean, root pitch.
   clips:{
-    pass_through:{stops:[0,.16,.4,.8,1],keys:[
-      [1.1,1.9,.8,1.5,.05,.25,2.5,.15,.3,.6],
-      [1.3,2.1,1.3,2.1,.04,.15,.7,1.5,.4,1.5],
-      [1.2,2.0,1.2,2.0,.04,.12,.5,1.7,.45,1.5],
-      [1.2,2.0,1.2,2.0,.04,.12,.5,1.7,.45,1.5],
-      [.5,.7,-.25,.6,.15,.8,1.7,.25,0,.9]]},
+    // Local clip05_crane_pipe4.1-6.1s /07_water_tower4.0-6.0s:
+    // reach together, pull to ribs, compact staggered knees, open after the rim.
+    pass_through:{stops:[0,.14,.32,.58,1],keys:[
+      [.75,1.45,.45,1.05,.1,.26,2.55,.14,.15,.48],
+      [1.18,2.08,1.02,1.88,.07,.16,2.35,.28,.28,.86],
+      [1.48,2.35,1.28,2.2,.035,.075,.55,1.62,.4,1.38],
+      [1.5,2.38,1.36,2.26,.035,.065,.42,1.78,.46,1.48],
+      [1.42,2.26,1.24,2.12,.045,.085,.52,1.62,.4,1.43]]},
+    pass_release:{stops:[0,.22,.55,.8,1],keys:[
+      [1.42,2.26,1.24,2.12,.045,.085,.52,1.62,.4,1.43],
+      [.9,1.6,.35,1.05,.11,.36,1.1,.9,.18,1.24],
+      [.35,.75,-.35,.5,.18,.95,1.65,.25,-.08,.92],
+      [.5,.85,-.3,.6,.18,.85,1.8,.25,-.04,.8],
+      [.5,.7,-.25,.6,.18,.8,1.7,.25,0,.75]]},
     water_jump:{stops:[0,.2,.45,.72,1],keys:[
       [1.2,2.0,.65,1.5,.25,.8,1.8,.3,.25,.2],
       [.25,.45,-.35,.7,.16,.85,1.6,.2,.05,.3],
@@ -56,7 +64,12 @@ TL.ReferenceMotion={
       return{pose,weight:w*.7,keepRoot:true,kind:a.kind};
     }
     const c=a&&this.clips[a.kind];if(!c)return null;
-    const t=TL.clamp(a.t/a.duration,0,1);let i=0;while(i<c.stops.length-2&&t>c.stops[i+1])i++;
+    let t=TL.clamp(a.t/a.duration,0,1);
+    if(a.kind==='pass_through'&&a.entry&&a.exit){
+      const along=h.pos.clone().sub(a.entry).dot(a.axis),length=a.exit.clone().sub(a.entry).dot(a.axis);
+      t=along<0?.32*TL.clamp(1+along/(a.approachDistance||8),0,1):.32+.68*TL.clamp(along/Math.max(length,.1),0,1);
+    }
+    let i=0;while(i<c.stops.length-2&&t>c.stops[i+1])i++;
     const f=TL.smooth(c.stops[i],c.stops[i+1],t),k=c.keys[i].map((v,j)=>TL.lerp(v,c.keys[i+1][j],f)),pose={};
     for(const [side,s,o]of [['L',1,a.dir>0?0:2],['R',-1,a.dir>0?2:0]]){
       const hip=k[o],knee=k[o+1];
@@ -67,14 +80,21 @@ TL.ReferenceMotion={
       pose['farm'+side]=TL.dirv(s*k[5]*.4,-Math.cos(k[6]+k[7]),Math.sin(k[6]+k[7]));
     }
     pose.spine=TL.dirv(0,1,k[8]*.6);pose.chest=TL.dirv(0,1,k[8]);
-    return{pose,pitch:k[9],roll:a.kind==='wing_dodge'?a.dir*Math.PI*2*TL.smooth(.06,.9,t):0,
-      weight:TL.smooth(0,.08,t)*(1-TL.smooth(.83,1,t)),kind:a.kind};
+    // One full corkscrew about the body's longitudinal axis, tied to crossing
+    // the physical bore rather than a timeout or the camera's orientation.
+    let spin=a.kind==='pass_release'?(a.spin||0):0;
+    if(a.kind==='pass_through'&&a.gate?.type==='pipe'){
+      const along=h.pos.clone().sub(a.gate.center).dot(a.axis),half=a.gate.length*.5;
+      spin=Math.PI*2*TL.smooth(-half-.8,half+.8,along);
+    }
+    return{pose,pitch:k[9],spin,roll:a.kind==='wing_dodge'?a.dir*Math.PI*2*TL.smooth(.06,.9,t):0,
+      weight:a.kind==='pass_through'?TL.smooth(0,.07,a.t):a.kind==='pass_release'?1-TL.smooth(.6,1,t):TL.smooth(0,.08,t)*(1-TL.smooth(.83,1,t)),phase:t,kind:a.kind};
   }
 };
 TL.ReferenceMotion.grip=function(an,h,p){
   const a=h.reference?.action;if(!a||!p||!['air_zip','pass_through'].includes(a.kind))return;
   const ropes=h.tether.ropes.filter(r=>r.active&&r.kind==='airzip');if(!ropes.length)return;
-  const rig=an.rig,inv=an.rootQ.clone().invert(),pull=TL.smooth(.09,.3,a.t),w=p.weight;
+  const rig=an.rig,inv=an.rootQ.clone().invert(),pull=a.kind==='pass_through'?TL.smooth(.08,.32,p.phase):TL.smooth(.09,.3,a.t),w=p.weight;
   for(const n of rig.order)rig.target[n].copy(rig.cur[n]);rig.hipsOffT.copy(rig.hipsOff);rig.hipsQT.copy(rig.hipsQ);
   for(const rope of ropes){
     const s=rope.hand,sg=s==='L'?1:-1,root=rig.P['uarm'+s],reach=rig.upperArm+rig.foreArm;

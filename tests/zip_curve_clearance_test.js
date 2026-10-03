@@ -1,0 +1,13 @@
+'use strict';
+const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
+const harness=process.env.TL_HARNESS||path.join(process.env.LOCALAPPDATA,'Temp/claude/c--Users-PRIYANSHU-Pictures-spooderman/3daa858f-ae71-47ed-a4cc-f3ea76aee61c/scratchpad/harness');global.THREE=require(path.join(harness,'node_modules/three/build/three.cjs'));
+for(const f of ['00_core.js','02_collision.js','04_physics.js','04b_contact.js','04c_reference.js'])vm.runInThisContext(fs.readFileSync(path.join(__dirname,'../src',f),'utf8'));
+TL.V.init();const world=new TL.CollisionWorld();world.groundFn=()=>0;const h=new TL.HeroController(world,TL.HERO_STATS.PULSE);h.teleport(.65,100,-13.5);h.vel.set(-.28,.48,.78).normalize().multiplyScalar(35);
+const axis=new THREE.Vector3(0,0,1),entry=new THREE.Vector3(0,100,-4.5),exit=new THREE.Vector3(0,100,10),pathCurve=TL.ReferenceTraversal.approachPath(h,entry,exit,axis);assert(pathCurve);
+const near=pathCurve.points.reduce((a,p)=>Math.abs(p.z+11)<Math.abs(a.z+11)?p:a,pathCurve.points[0]);
+world.addStatic(near.x,99.68,near.z,.18,.12,.18,0,{kind:'building'});
+assert(!TL.ReferenceTraversal.clearPath(h,h.pos,entry),'old chord validation rejects the clear rising approach');
+const a={path:pathCurve,pathIndex:1};assert(TL.ReferenceTraversal.remainingPassageClear(h,a),'actual curved path remains clear');
+const blocked=pathCurve.points[Math.floor(pathCurve.points.length*.25)];world.addStatic(blocked.x,blocked.y,blocked.z,.3,.5,.3,0,{kind:'barrier',dynamic:true});
+assert(!TL.ReferenceTraversal.remainingPassageClear(h,a),'new obstruction on actual remaining curve still rejects immediately');
+console.log('PASS curved approach clears obstacle below its chord; new real curve blocker aborts');

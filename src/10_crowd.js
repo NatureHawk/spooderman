@@ -103,13 +103,26 @@ TL.CrowdManager = class {
     return s;
   }
   assignSkins() {
-    const cam = this.game.camera.position;
-    const sorted = this.peds.filter((p) => p.alive).sort((a, b) => a.pos.distanceToSquared(cam) - b.pos.distanceToSquared(cam));
-    const want = new Set(sorted.slice(0, this.nearMax).filter((p) => p.pos.distanceTo(cam) < 70));
+    const camera = this.game.camera, cam = camera.position;
+    const forward = this._detailForward || (this._detailForward = new THREE.Vector3());
+    camera.getWorldDirection(forward);
+    const score = (p) => {
+      const dx = p.pos.x - cam.x, dy = p.pos.y - cam.y, dz = p.pos.z - cam.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      // Keep nearby reactions readable; bias the limited articulated pool toward
+      // the view and retain incumbents so crossing pedestrians do not swap rigs.
+      const behind = dx * forward.x + dy * forward.y + dz * forward.z < 0 && d2 > 225;
+      return d2 * (p.skin ? 0.72 : 1) * (behind ? 1.5 : 1);
+    };
+    const sorted = this.peds.filter((p) => p.alive && p.pos.distanceToSquared(cam) < (p.skin ? 82 * 82 : 68 * 68));
+    sorted.sort((a, b) => score(a) - score(b));
+    const want = new Set(sorted.slice(0, this.nearMax));
     for (const p of this.peds) if (p.skin && !want.has(p)) { p.skin.owner = null; p.skin.sk.mesh.visible = false; p.skin = null; }
+    let promoted = 0;
     for (const p of want) if (!p.skin) {
+      if (promoted >= 2) break;
       const s = this.getSkin(p.variant, p.appearance); if (!s) continue;
-      s.owner = p; p.skin = s; s.sk.mesh.visible = true;
+      s.owner = p; p.skin = s; s.sk.mesh.visible = true; promoted++;
       TL.Assets.setSlots(s.mat, { 6: p.colors.skin, 7: p.colors.shirt, 2: p.colors.pants });
       if (s.extra.hat) s.extra.hat.visible = p.hat && !/worker|police/.test(p.appearance ? p.appearance.name : '');
       if (s.extra.bag) s.extra.bag.visible = p.bag;

@@ -242,6 +242,7 @@ TL.MissionManager = class {
   }
   available() { return Object.values(this.defs).filter((d) => !this.completed.has(d.id) && (d.id === 'm1' || this.completed.has(Object.values(this.defs).find((x) => x.unlock === d.id).id))); }
   startMission(id) {
+    if (this.game.routes && this.game.routes.active || this.game.encounters && this.game.encounters.active) return false;
     const d = this.defs[id]; if (!d || this.active) return false;
     if(this.game.cityLife)this.game.cityLife.cleanupIncident('abandoned');
     this.endCrime(false, true);
@@ -334,6 +335,7 @@ TL.MissionManager = class {
     this.t += dt;
     const g = this.game;
     this.objs.update(dt, this.t);
+    if (g.routes && g.routes.active || g.encounters && g.encounters.active) return;
     if (this.active) this.updateStep(dt);
     else this.updateCrimes(dt);
     this.updateActivities(dt);
@@ -473,6 +475,7 @@ TL.MissionManager = class {
     return new THREE.Vector3(h.x + 60, 1, h.z);
   }
   startCrime(type) {
+    if (this.active || this.activeActivity || this.crime || this.game.routes && this.game.routes.active || this.game.encounters && this.game.encounters.active) return false;
     const g = this.game;
     const c = { type, t: 0, limit: 150, optional: null, optionalDone: true, variant: Math.floor(Math.random() * 3) };
     const names = { assault: 'Street assault', pursuit: 'Vehicle pursuit', theft: 'Rooftop tech theft', structural: 'Structural emergency', drones: 'Drone swarm', transit: 'Transit incident', waterfront: 'Waterfront rescue' };
@@ -620,6 +623,7 @@ TL.MissionManager = class {
     }
   }
   startActivity(a) {
+    if (this.active || this.activeActivity || this.crime || this.game.routes && this.game.routes.active || this.game.encounters && this.game.encounters.active) return false;
     const g = this.game, st = {};
     this.activeActivity = { a, t: 0, st, t0: g.ui.lastScanT || 0 };
     switch (a.type) {

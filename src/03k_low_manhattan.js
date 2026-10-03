@@ -88,7 +88,13 @@ TL.LowManhattan = {
     let cache=this.instanceCache.get(mesh);
     if(!cache||cache.matrix.array.length<source.array.length){cache={matrix:new THREE.InstancedBufferAttribute(new Float32Array(source.array.length),16),color:mesh.instanceColor?new THREE.InstancedBufferAttribute(new Float32Array(mesh.instanceColor.array.length),3):null};this.instanceCache.set(mesh,cache);}
     if(cache.source===source&&cache.version===source.version&&cache.count===count&&cache.range===range&&cache.pos.distanceToSquared(camera.position)<.25){
-      if(cache.n!==count){change(mesh,'instanceMatrix',cache.matrix);change(mesh,'count',cache.n);if(cache.color&&mesh.instanceColor)change(mesh,'instanceColor',cache.color);}return;
+      if(cache.n!==count){change(mesh,'instanceMatrix',cache.matrix);change(mesh,'count',cache.n);if(cache.color&&mesh.instanceColor)change(mesh,'instanceColor',cache.color);for(const [name,e]of Object.entries(cache.extra||{}))change(mesh.geometry.attributes,name,e.attribute);}return;
+    }
+    // Tree cross-fade and impostor attributes must follow the same compacted instance order.
+    cache.extra=cache.extra||{};
+    for(const [name,attribute] of Object.entries(mesh.geometry.attributes))if(attribute.isInstancedBufferAttribute){
+      let entry=cache.extra[name];
+      if(!entry||entry.source!==attribute)entry=cache.extra[name]={source:attribute,attribute:new THREE.InstancedBufferAttribute(new attribute.array.constructor(attribute.array.length),attribute.itemSize,attribute.normalized)};
     }
     cache.source=source;cache.version=source.version;cache.count=count;cache.range=range;(cache.pos||(cache.pos=new THREE.Vector3())).copy(camera.position);
     const p=new THREE.Vector3(),a=source.array,dst=cache.matrix.array;let n=0;
@@ -98,11 +104,13 @@ TL.LowManhattan = {
       // handles visibility; this removes instances beyond the Low detail range.
       if(p.distanceToSquared(camera.position)>(range+35)*(range+35))continue;
       dst.set(a.subarray(i*16,i*16+16),n*16);
+      for(const e of Object.values(cache.extra)){const size=e.source.itemSize;e.attribute.array.set(e.source.array.subarray(i*size,(i+1)*size),n*size);}
       if(cache.color&&mesh.instanceColor)cache.color.array.set(mesh.instanceColor.array.subarray(i*3,i*3+3),n*3);
       n++;
     }
     cache.n=n;if(n===count)return;
     cache.matrix.needsUpdate=true;change(mesh,'instanceMatrix',cache.matrix);change(mesh,'count',n);
+    for(const [name,e]of Object.entries(cache.extra)){e.attribute.needsUpdate=true;change(mesh.geometry.attributes,name,e.attribute);}
     if(cache.color&&mesh.instanceColor){cache.color.needsUpdate=true;change(mesh,'instanceColor',cache.color);}
   },
   // Small spatial clusters retain UV seams and bone influences. The original

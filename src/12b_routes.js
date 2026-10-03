@@ -33,11 +33,11 @@ TL.ROUTE_DEFS = [
 
 TL.RouteScore = class {
   constructor() {
-    this.cat = { launch: 0, trick: 0, near: 0, flow: 0, variety: 0 };
+    this.cat = { launch: 0, trick: 0, near: 0, flow: 0, variety: 0, wall: 0, corner: 0, low: 0, release: 0 };
     this.count = { launch: 0, trick: 0, near: 0 };
-    this.CAP = { launch: 500, trick: 600, near: 480, flow: 360, variety: 150 };
+    this.CAP = { launch: 500, trick: 600, near: 480, flow: 360, variety: 150, wall: 240, corner: 180, low: 180, release: 180 };
     this.byKind = {}; this.nearIds = new Set(); this.nearCool = 0; this.pendingTrick = null;
-    this.flowT = 0; this.slowT = 0; this.events = [];
+    this.flowT = 0; this.slowT = 0; this.events = []; this.wallDistance = 0; this.lowDistance = 0; this.releaseArmed = false;
   }
   add(cat, base, label, key) {
     const n = key ? (this.byKind[key] = (this.byKind[key] || 0) + 1) - 1 : this.count[cat] || 0;
@@ -54,15 +54,41 @@ TL.RouteScore = class {
 
 TL.RouteChallenges = class {
   constructor(game) {
-    this.game = game; this.best = {}; this.active = null; this.startMarks = []; this.marks = [];
+    this.game = game; this.best = {}; this.worksiteRewards = new Set(); this.active = null; this.startMarks = []; this.marks = [];
     this.defs = game.scanMode ? TL.ROUTE_DEFS.slice() : [];
+    if (game.scanMode && TL.WorksiteRuns) this.defs.push(...TL.WorksiteRuns.build(game));
     this._hit = { t: 0 }; this._cands = []; this._v = new THREE.Vector3();
     this.buildHud();
     if (this.defs.length) this.buildStartMarkers();
   }
   /* ---------------------------------------------------------------- persistence */
-  serialize() { return { best: this.best }; }
-  deserialize(d) { this.best = Object.assign({}, d && d.best || {}); }
+  serialize() {
+    const known=new Set(this.defs.map(d=>d.id)),priority=(a,b)=>Number(known.has(b))-Number(known.has(a));
+    const ids=Object.keys(this.best).sort(priority).slice(0,32);
+    return {best:Object.fromEntries(ids.map(id=>[id,this.best[id]])),worksiteRewards:[...this.worksiteRewards].sort(priority).slice(0,32)};
+  }
+  deserialize(d) {
+    this.best = {};
+    this.worksiteRewards=new Set((Array.isArray(d&&d.worksiteRewards)?d.worksiteRewards:[]).slice(0,32).filter(id=>typeof id==='string'&&/^worksite_[a-z0-9_]{1,39}$/i.test(id)));
+    for (const id of Object.keys(d && d.best || {}).slice(0, 32)) {
+      if (!/^[a-z0-9_]{1,48}$/i.test(id) || ['__proto__', 'constructor', 'prototype'].includes(id)) continue;
+      const def = this.defs.find(x => x.id === id) || { id, cps: new Array(32) };
+      const b = d.best[id];
+      if (!b || !Number.isFinite(b.time) || b.time <= 0) continue;
+      if(b.rewarded===true&&id.startsWith('worksite_'))this.worksiteRewards.add(id);
+      // New site geometry invalidates old timings/ghost positions, not earned rewards.
+      if(def.kind==='worksite'&&def.course&&b.course!==def.course)continue;
+      const out = { time: b.time, score: Number.isFinite(b.score) ? b.score : 0, medal: ['gold','silver','bronze'].includes(b.medal) ? b.medal : null };
+      if (b.rewarded === true) out.rewarded = true;
+      if(def.kind==='worksite'&&def.course)out.course=def.course;
+      const r = b.replay;
+      if (r && r.version === 1 && Array.isArray(r.samples) && r.samples.length >= 2 && r.samples.length <= 1800 &&
+        r.samples.every((s, i) => Array.isArray(s) && s.length === 5 && s.every(Number.isFinite) && s[0] >= 0 && s[0] <= b.time + 1 && (!i || s[0] > r.samples[i - 1][0]) && Math.abs(s[1]) < 100000 && Math.abs(s[2]) < 10000 && Math.abs(s[3]) < 100000)) {
+        out.replay = { version: 1, samples: r.samples.map(s => s.slice()), splits: Array.isArray(r.splits) ? r.splits.slice(0, def.cps.length).filter(Number.isFinite) : [], choices: Array.isArray(r.choices) ? r.choices.slice(0, def.cps.length).map(x => x === 1 ? 1 : 0) : [] };
+      }
+      this.best[def.id] = out;
+    }
+  }
   medalOf(def, t) { return t <= def.medals.gold ? 'gold' : t <= def.medals.silver ? 'silver' : t <= def.medals.bronze ? 'bronze' : null; }
   fmt(t) { const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); }
   /* ---------------------------------------------------------------- visuals */
@@ -85,12 +111,17 @@ TL.RouteChallenges = class {
   buildStartMarkers() {
     const sc = this.game.scene;
     for (const def of this.defs) {
-      const g = new THREE.Group(), s = def.start;
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 26, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0x55d8ff, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }));
-      beam.position.y = 13; g.add(beam);
-      const ring = this.ringMesh(1.1, 0x55d8ff, 0.05); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; g.add(ring);
+      const g = new THREE.Group(), s = def.start, color = def.kind === 'worksite' ? 0xffbe55 : 0x55d8ff, height=def.kind==='worksite'?4:26;
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, height, 10, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }));
+      beam.position.y = height/2; g.add(beam);
+      const ring = this.ringMesh(1.1, color, 0.05); ring.rotation.x = Math.PI / 2; ring.position.y = 0.04; g.add(ring);
       g.position.set(s.x, s.y, s.z); sc.add(g); this.startMarks.push({ def, g });
     }
+    this.refreshStartMarkers();
+  }
+  refreshStartMarkers() {
+    const p=this.game.hero&&this.game.hero.ctrl.pos,wp=this.game.ui&&this.game.ui.waypoint;
+    for(const sm of this.startMarks){const s=sm.def.start;sm.g.visible=!!(!this.active&&(sm.def.kind!=='worksite'||p&&Math.hypot(p.x-s.x,p.z-s.z)<120||wp&&Math.hypot(wp.x-s.x,wp.y-s.y,wp.z-s.z)<3));}
   }
   buildMarkers(def) {
     this.clearMarkers();
@@ -122,8 +153,78 @@ TL.RouteChallenges = class {
   }
   clearMarkers() { for (const m of this.marks) { this.game.scene.remove(m); m.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); } this.marks = []; }
   /* ---------------------------------------------------------------- flow */
-  busy() { const M = this.game.missions; return !!(M && (M.active || M.crime || M.activeActivity)); }
+  alternateGates(def) {
+    const out = {};
+    if (def.id !== 'street_canyon' || !TL.Contact) return out;
+    for (const k of [1, 3, 5]) {
+      const c = def.cps[k]; if (!c || c.kind !== 'gate') continue;
+      const alt = Object.assign({}, c, { y: c.y + 15, r: 5 });
+      let clear = true;
+      for (const d of [-9, -4, 0, 4, 9]) {
+        const x = alt.x + alt.n[0] * d, z = alt.z + alt.n[1] * d;
+        this.game.world.query(x - 2, z - 2, x + 2, z + 2, this._cands);
+        if (TL.Contact.overlap(this.game.world, this._cands, x, alt.y, z, TL.BodyShapes.stand, 0.03)) { clear = false; break; }
+      }
+      if (clear) out[k] = alt;
+    }
+    return out;
+  }
+  buildAlternates() {
+    this.altMarks = [];
+    for (const [k, c] of Object.entries(this.active.alternatives)) {
+      const mesh = this.ringMesh(c.r, 0xffcf66, 0.055);
+      mesh.position.set(c.x, c.y, c.z); mesh.rotation.y = Math.atan2(c.n[0], c.n[1]);
+      this.game.scene.add(mesh); this.altMarks.push({ k: +k, mesh });
+    }
+    this.refreshAlternates();
+  }
+  refreshAlternates() { for (const a of this.altMarks || []) a.mesh.visible = a.k === this.active.k; }
+  disposeGuide(mesh) {
+    if (!mesh) return; this.game.scene.remove(mesh);
+    mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) for (const m of [].concat(o.material)) m.dispose(); });
+  }
+  recordSample(force) {
+    const A = this.active; if (!A || (!force && A.time < A.nextSample)) return;
+    const h = this.game.hero.ctrl, last = A.samples[A.samples.length - 1];
+    if (last && A.time - last[0] < 0.005) return;
+    if (A.samples.length >= 1799) { A.samples = A.samples.filter((_, i) => i % 2 === 0); A.sampleInterval *= 2; }
+    A.samples.push([+A.time.toFixed(3), +h.pos.x.toFixed(2), +h.pos.y.toFixed(2), +h.pos.z.toFixed(2), +h.facing.toFixed(3)]);
+    A.nextSample = A.time + A.sampleInterval;
+  }
+  buildGhost() {
+    const b = this.best[this.active.def.id], r = b && b.replay;
+    if (!r || r.samples.length < 2) return;
+    const ghost = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 0.7, 3, 6), new THREE.MeshBasicMaterial({ color: 0xb8ebff, transparent: true, opacity: 0.17, wireframe: true, depthWrite: false }));
+    ghost.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 7, 5), body.material.clone()); head.position.y = 0.73; ghost.add(head);
+    const limbs=[];
+    for(const side of [-1,1])for(const leg of [false,true]){
+      const limb=new THREE.Mesh(new THREE.CapsuleGeometry(leg?0.09:0.07,leg?0.52:0.42,2,5),body.material.clone());
+      limb.position.set(side*(leg?0.14:0.38),leg?-0.62:0.02,0);limb.rotation.z=leg?0:side*.18;ghost.add(limb);limbs.push({mesh:limb,side,leg});
+    }
+    ghost.userData.limbs=limbs;
+    this.game.scene.add(ghost); this.ghost = ghost; this.active.ghostReplay = r; this.active.ghostK = 0;
+  }
+  updateGhost() {
+    const A = this.active, ghost = this.ghost; if (!ghost || !A.ghostReplay) return;
+    const samples = A.ghostReplay.samples;
+    while (A.ghostK < samples.length - 2 && samples[A.ghostK + 1][0] < A.time) A.ghostK++;
+    const a = samples[A.ghostK], b = samples[A.ghostK + 1], u = TL.clamp((A.time - a[0]) / Math.max(0.001, b[0] - a[0]), 0, 1);
+    ghost.position.set(TL.lerp(a[1], b[1], u), TL.lerp(a[2], b[2], u), TL.lerp(a[3], b[3], u));
+    ghost.rotation.y = a[4] + TL.wrapAngle(b[4] - a[4]) * u;
+    const speed=Math.hypot(b[1]-a[1],b[3]-a[3])/Math.max(.01,b[0]-a[0]),swing=Math.min(.45,speed*.04)*Math.sin(A.time*8);
+    for(const l of ghost.userData.limbs)l.mesh.rotation.x=swing*l.side*(l.leg?1:-1);
+    ghost.visible = A.time <= samples[samples.length - 1][0] && ghost.position.distanceTo(this.game.hero.ctrl.pos) > 3;
+  }
+  busy() { const M = this.game.missions; return !!(this.game.encounters && this.game.encounters.active || M && (M.active || M.crime || M.activeActivity)); }
+  nearStart() {
+    if(this.active||this.busy()||!this.game.hero||this.game.state&&this.game.state!=='play'||this.game.ui&&this.game.ui.modal)return null;
+    const p=this.game.hero.ctrl.pos;
+    return this.defs.find(d=>Math.abs(p.y-TL.C.FEET-d.start.y)<3&&Math.hypot(p.x-d.start.x,p.z-d.start.z)<4.5)||null;
+  }
   begin(def) {
+    if (!def || this.busy()) return false;
     const g = this.game, h = g.hero.ctrl;
     this.cleanupRun();
     const s = def.start;
@@ -131,39 +232,55 @@ TL.RouteChallenges = class {
     h.fsm.set(TL.TS.GROUND, 'route-start'); h.grounded = true; h.frozen = true; h.landing = null;
     if (g.hero.anim) { g.hero.anim.rel = null; g.hero.anim.trick = null; g.hero.anim.landRec = null; }
     g.rig.yaw = s.yaw + Math.PI; g.rig.pitch = -0.16; g.rig.smoothT.copy(h.pos);
-    this.active = { def, phase: 'countdown', t: 0, time: 0, k: 0, warned: -1, splits: [], score: new TL.RouteScore(), prev: h.pos.clone(), lastTrick: null, offT: 0 };
+    this.active = { def, phase: 'countdown', t: 0, time: 0, k: 0, warned: -1, splits: [], score: new TL.RouteScore(), prev: h.pos.clone(), lastTrick: null, offT: 0,
+      choices: [], alternatives: this.alternateGates(def), samples: [], sampleInterval: 0.15, nextSample: 0 };
     this.buildMarkers(def);
+    this.recordSample(true);
+    this.buildAlternates(); this.buildGhost();
     for (const sm of this.startMarks) sm.g.visible = false;
     g.ui.setWaypoint(new THREE.Vector3(def.cps[0].x, def.cps[0].y, def.cps[0].z));
     if (this.hud) this.hud.style.display = 'block';
     g.audio.sfx('ui');
+    return true;
   }
   restart() { if (this.active) this.begin(this.active.def); }
   exit() {
     if (!this.active) return;
     this.cleanupRun(); this.active = null;
     if (this.hud) this.hud.style.display = 'none';
-    for (const sm of this.startMarks) sm.g.visible = true;
+    this.refreshStartMarkers();
     this.game.ui.setWaypoint(null);
+  }
+  dispose() {
+    this.cleanupRun(); this.active = null; clearTimeout(this._popT);
+    for (const sm of this.startMarks) this.disposeGuide(sm.g); this.startMarks = [];
+    for (const el of [this.hud, this.popEl, this.cdEl]) if (el) el.remove();
   }
   /* temporary state of a run: markers, freeze, countdown overlay, pending bonuses */
   cleanupRun() {
     const g = this.game; this.clearMarkers();
+    this.disposeGuide(this.ghost); this.ghost = null;
+    for (const m of this.altMarks || []) this.disposeGuide(m.mesh); this.altMarks = [];
     if (g.hero) g.hero.ctrl.frozen = false;
     if (this.cdEl) this.cdEl.style.opacity = 0;
     if (this.popEl) this.popEl.style.opacity = 0;
   }
   finish() {
+    if (!this.active || this.active.phase !== 'run') return;
     const A = this.active, g = this.game, def = A.def, t = A.time, sc = A.score;
     const timeScore = Math.round(5000 * def.medals.gold / Math.max(t, def.medals.gold * 0.6));   // bounded: at most ~8300
     const total = timeScore + sc.bonus, medal = this.medalOf(def, t);
     const prev = this.best[def.id], pbTime = !prev || t < prev.time, pbScore = !prev || total > prev.score;
-    this.best[def.id] = { time: pbTime ? +t.toFixed(2) : prev.time, score: pbScore ? total : prev.score, medal: this.betterMedal(prev && prev.medal, medal) };
-    const result = { def, t, timeScore, bonus: sc.bonus, cat: Object.assign({}, sc.cat), total, medal, pbTime, pbScore, splits: A.splits.slice() };
+    this.recordSample(true);
+    const replay = pbTime ? { version: 1, samples: A.samples.map(s => s.slice()), splits: A.splits.slice(), choices: A.choices.slice() } : prev.replay;
+    this.best[def.id] = { time: pbTime ? +t.toFixed(2) : prev.time, score: pbScore ? total : prev.score, medal: this.betterMedal(prev && prev.medal, medal), replay };
+    const xpReward = def.kind === 'worksite' ? (this.worksiteRewards.has(def.id) || prev && prev.rewarded ? 0 : 180) : medal === 'gold' ? 300 : medal === 'silver' ? 220 : medal ? 160 : 100;
+    if (def.kind === 'worksite') {this.best[def.id].rewarded = true;this.best[def.id].course=def.course;this.worksiteRewards.add(def.id);}
+    const result = { def, t, timeScore, bonus: sc.bonus, cat: Object.assign({}, sc.cat), total, medal, pbTime, pbScore, splits: A.splits.slice(), xpReward };
     this.lastResult = result;
     A.phase = 'done'; g.hero.ctrl.frozen = false;
     g.audio.sfx('reward');
-    if (g.progress) g.progress.addXP(medal === 'gold' ? 300 : medal === 'silver' ? 220 : medal ? 160 : 100, def.name);
+    if (g.progress && xpReward) g.progress.addXP(xpReward, def.name);
     if (g.save) g.save.save(true);
     this.showResults(result);
   }
@@ -179,7 +296,9 @@ TL.RouteChallenges = class {
         row('Time score', R.timeScore) +
         row('Clean point launches', R.cat.launch) + row('Tricks with a controlled recovery', R.cat.trick) + row('Near misses', R.cat.near) +
         row('Sustained flow', R.cat.flow) + row('Variety', R.cat.variety) +
+        row('Wall / corner flow', R.cat.wall + R.cat.corner) + row('Low swings / timed releases', R.cat.low + R.cat.release) +
         row('Total', R.total + (R.pbScore ? '  (new best)' : '')) +
+        (R.def.kind === 'worksite' ? row('Worksite reward', R.xpReward ? R.xpReward + ' XP · first completion' : 'Already earned · personal best updated if faster') : '') +
         '<p class="small">Bonuses are capped per kind and repeated moves earn less each time; the time score is the larger part.</p>';
       const bar = ui.el('div', { class: 'grid' });
       bar.appendChild(ui.btn('Restart', () => { ui.closeModal(); this.restart(); }));
@@ -192,15 +311,13 @@ TL.RouteChallenges = class {
     const g = this.game; if (!this.defs.length || !g.hero) return;
     const h = g.hero.ctrl;
     if (!this.active) {
+      this.refreshStartMarkers();
       if (this.busy()) return;
-      for (const sm of this.startMarks) {
-        const s = sm.def.start;
-        if (Math.abs(h.pos.x - s.x) + Math.abs(h.pos.z - s.z) > 12 || Math.abs(h.pos.y - TL.C.FEET - s.y) > 3) continue;
-        if (Math.hypot(h.pos.x - s.x, h.pos.z - s.z) > 4.5) continue;
-        const b = this.best[sm.def.id];
-        g.ui.prompt('[E] Start route: ' + sm.def.name + (b ? '  ·  best ' + this.fmt(b.time) : ''));
-        if (g.input.consume('interact')) this.begin(sm.def);
-        break;
+      const def=this.nearStart();
+      if(def){
+        const b = this.best[def.id];
+        g.ui.prompt('[E] Start route: ' + def.name + (b ? '  ·  best ' + this.fmt(b.time) : ''));
+        if (g.input.consume('interact')) this.begin(def);
       }
       return;
     }
@@ -217,13 +334,21 @@ TL.RouteChallenges = class {
     }
     if (this.cdEl && A.t < 3.7) { A.t += dt; this.cdEl.style.opacity = Math.max(0, 1 - (A.t - 3) / 0.6); }
     A.time += dt;
+    this.recordSample(); this.updateGhost();
     this.scoreFrame(dt, h);
     // swept checkpoint tests on this frame's motion segment
     const p0 = A.prev, p1 = h.pos;
     for (let guard = 0; guard < 3 && A.k < def.cps.length; guard++) {
-      const c = def.cps[A.k], r = this.crossing(c, p0, p1, h);
+      const c = def.cps[A.k], alt = A.alternatives[A.k];
+      const altPassed = alt && this.crossing(alt, p0, p1, h) === 'pass';
+      const r = altPassed ? 'pass' : this.crossing(c, p0, p1, h);
       if (r === 'pass') {
+        A.choices.push(altPassed ? 1 : 0);
+        const oldSplit = this.best[def.id] && this.best[def.id].replay && this.best[def.id].replay.splits[A.k];
+        A.splitDelta = Number.isFinite(oldSplit) ? A.time - oldSplit : null;
         A.k++; A.warned = -1; A.splits.push(+A.time.toFixed(2)); g.audio.sfx('perfect'); this.refreshMarkers();
+        this.refreshAlternates();
+        if (alt) this.popText(altPassed ? 'High line · checkpoint clear' : 'Low line · checkpoint clear');
         if (A.k >= def.cps.length) { A.prev.copy(p1); this.finish(); return; }
         const n = def.cps[A.k]; g.ui.setWaypoint(new THREE.Vector3(n.x, n.y, n.z));
         continue;
@@ -257,13 +382,21 @@ TL.RouteChallenges = class {
   drawHud() {
     const A = this.active; if (!this.hud || !A) return;
     const b = this.best[A.def.id];
-    this.hud.textContent = A.def.name.toUpperCase() + '   ' + this.fmt(A.time) + '   ' + Math.min(A.k + (A.phase === 'run' ? 0 : 0), A.def.cps.length) + '/' + A.def.cps.length + '   ★ ' + this.fmt(A.def.medals.gold) + (b ? '   best ' + this.fmt(b.time) : '');
+    this.hud.textContent = A.def.name.toUpperCase() + '   ' + this.fmt(A.time) + '   ' + Math.min(A.k, A.def.cps.length) + '/' + A.def.cps.length +
+      (A.splitDelta != null ? '   split ' + (A.splitDelta >= 0 ? '+' : '') + A.splitDelta.toFixed(1) + 's' : b ? '   best ' + this.fmt(b.time) : '') +
+      (A.alternatives[A.k] ? '   LOW cyan / HIGH gold' : A.def.kind === 'worksite' && A.def.cps[A.k] ? '   '+A.def.cps[A.k].label : '');
   }
   /* ---------------------------------------------------------------- bonuses */
   onHeroEvent(hero, e, a, b) {
     const A = this.active; if (!A || A.phase !== 'run') return;
     const S = A.score;
     switch (e) {
+      case 'releaseboost': {
+        const c = hero.ctrl || hero;
+        if (S.releaseArmed && a > 0.18 && c.vel && c.vel.length() > 16) { S.add('release', 90, 'Timed release', 'release'); S.releaseArmed = false; }
+        break;
+      }
+      case 'corner': if (S.cornerArmed) { S.add('corner', 90, 'Clean corner', 'corner'); S.cornerArmed = false; S.wallDistance = 0; } break;
       case 'launchboost': { const p = S.add('launch', a && a.perfect ? 200 : 120, a && a.perfect ? 'Clean point launch' : 'Point launch'); if (p) this.popText('+' + p + ' ' + (a && a.perfect ? 'Clean point launch' : 'Point launch')); break; }
       case 'attach': case 'wall': case 'pointcatch': case 'land': this.resolveTrick(hero, e, b); break;
       case 'hardland': case 'splash': case 'wallimpact': if (S.pendingTrick) { S.pendingTrick = null; this.popText('Trick lost — uncontrolled landing'); } break;
@@ -279,11 +412,24 @@ TL.RouteChallenges = class {
   }
   scoreFrame(dt, h) {
     const g = this.game, S = this.active.score, an = g.hero.anim, sp = h.vel.length(), st = h.state, T = TL.TS;
+    const moved = h.pos.distanceTo(this.active.prev), genuine = moved > 0.015 && moved < Math.max(3, sp * dt * 2 + 1);
+    if (genuine && sp > 10 && (st === T.WALL || h.swingWall) && h.wallCol && h.impact < 20) {
+      S.wallDistance += moved; if (S.wallDistance > 6) S.cornerArmed = true;
+      if (S.wallDistance >= 14) { S.add('wall', 80, 'Clean wall run', 'wall'); S.wallDistance -= 14; }
+    } else if (st !== T.WALL && !h.swingWall) { S.wallDistance = 0; S.cornerArmed = false; }
+    if (genuine && sp > 18 && st === T.SWING && h.tether.main.attached) {
+      S.swingDistance = (S.swingDistance || 0) + moved; if (S.swingDistance > 12) S.releaseArmed = true;
+      const floor = g.world.raycast(h.pos.x, h.pos.y - 0.9, h.pos.z, 0, -1, 0, 8, c => c.solid, null);
+      const clearance = floor ? h.pos.y - TL.C.FEET - floor.y : h.pos.y - TL.C.FEET - g.world.ground(h.pos.x, h.pos.z);
+      if (clearance > 0.5 && clearance < 7 && !h.grounded && !h.swingWall) S.lowDistance += moved;
+      else S.lowDistance = 0;
+      if (S.lowDistance > 18) { S.add('low', 60, 'Low swing', 'low'); S.lowDistance = 0; }
+    } else { S.swingDistance = 0; S.lowDistance = 0; if (st !== T.SWING) S.releaseArmed = false; }
     // trick start (from the combat trick input); credited later on a controlled recovery
     if (an && an.trick && an.trick !== S.lastTrick) S.pendingTrick = an.trick;
     S.lastTrick = an ? an.trick : null;
     // sustained flow: speed carried without stalling
-    if (sp > 15 && st !== T.PERCH) { S.flowAcc = (S.flowAcc || 0) + dt; if (S.flowAcc >= 1) { S.flowAcc -= 1; S.add('flow', 12, null); } }
+    if (genuine && sp > 15 && st !== T.PERCH) { S.flowAcc = (S.flowAcc || 0) + dt; if (S.flowAcc >= 1) { S.flowAcc -= 1; S.add('flow', 12, null); } }
     // near misses: fast, airborne, genuinely close to a surface without touching it; once per object
     S.nearCool -= dt;
     const air = st === T.AIR || st === T.SWING || st === T.DIVE || st === T.GLIDE;

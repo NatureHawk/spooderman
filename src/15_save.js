@@ -32,6 +32,7 @@ TL.SaveManager = class {
       progress: g.progress ? g.progress.serialize() : null,
       missions: g.missions ? g.missions.serialize() : null,
       routes: g.routes ? g.routes.serialize() : null,
+      encounters: g.encounters ? g.encounters.serialize() : null,
       combat: g.combat ? g.combat.serialize() : null,
       settings: g.settings, ngPlus: g.ngPlus || 0,
     };
@@ -57,6 +58,7 @@ TL.SaveManager = class {
     if (d.progress && g.progress) g.progress.deserialize(d.progress);
     if (d.missions && g.missions) g.missions.deserialize(d.missions);
     if (d.routes && g.routes) g.routes.deserialize(d.routes);
+    if (d.encounters && g.encounters) g.encounters.deserialize(d.encounters);
     if (d.combat && g.combat) g.combat.deserialize(d.combat);
     if (d.settings) { g.settings = Object.assign(TL.defaultSettings(), d.settings); }
     g.ngPlus = d.ngPlus || 0;

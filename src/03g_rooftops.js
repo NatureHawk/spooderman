@@ -147,7 +147,7 @@ TL.Rooftops = {
     const R=world.roofState,P=g.attributes.position.array,roof=[],wall=[],attr=new Float32Array(g.attributes.position.count*4);let offset=0;
     for(const b of list){
       const A=this.analyze(b,P.subarray(offset*9,(offset+b.n)*9)),kinds=new Map(A.faces.map(f=>[f.k,f.kind]));
-      for(const k of A.bulk)kinds.set(k,3);R.analyses.push(A);
+      for(const k of A.bulk)kinds.set(k,3);if(!b._constructionCut)R.analyses.push(A);
       for(let k=0;k<b.n;k++) {
         const kind=kinds.get(k)||0,tri=offset+k;(kind?roof:wall).push(tri*3,tri*3+1,tri*3+2);
         if(kind){R.roofTriangles++;if(kind===2)R.pitchedTriangles++;for(let j=0;j<3;j++)attr.set([Math.cos(A.yaw),Math.sin(A.yaw),this.hash(b.id),kind],(tri*3+j)*4);}

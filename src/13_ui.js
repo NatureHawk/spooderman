@@ -14,7 +14,7 @@ TL.UIManager = class {
     this.hud = this.$('hud'); this.modal = null; this.telegraphs = new Map();
     this.toasts = []; this.lastScanT = 0; this.scanUntil = 0; this.promptText = ''; this.promptT = 0;
     this.waypoint = null; this.objective = '';
-    this.mapFilters = { story: true, crimes: true, activities: true, caches: true, landmarks: true };
+    this.mapFilters = { story: true, crimes: true, activities: true, caches: true, landmarks: true, worksites: true };
     this.debugObjs = null;
     this.bindGlobal();
     this.padNavT = 0;
@@ -239,6 +239,10 @@ TL.UIManager = class {
     if (g.missions.crime && g.missions.crime.p) dot(g.missions.crime.p, '#ff3030', 6);
     for (const a of g.missions.activities) if (!g.missions.activityDone.has(a.id)) dot(a.p, '#40c0ff', 3.5);
     if (!g.missions.active) for (const d of g.missions.available()) dot(d.start, '#ffd040', 6);
+    if (this.mapFilters.worksites) for (const d of this.worksiteRoutes()) {
+      const p=d.start, r=4/sc; ctx.fillStyle='#ffad50'; ctx.beginPath();
+      ctx.moveTo(p.x,p.z-r);ctx.lineTo(p.x+r,p.z);ctx.lineTo(p.x,p.z+r);ctx.lineTo(p.x-r,p.z);ctx.closePath();ctx.fill();
+    }
     if (this.waypoint) dot(this.waypoint, '#ffffff', 5);
     const other = g.heroes[g.heroName === 'WEAVER' ? 'PULSE' : 'WEAVER'];
     dot(other.ctrl.pos, g.heroName === 'WEAVER' ? '#40f0e0' : '#ffb030', 4);
@@ -351,6 +355,7 @@ TL.UIManager = class {
         ['Controls', () => this.openControls()], ['Accessibility', () => this.openAccess()], ['Save / Load', () => this.openSave()],
         ['Photo Mode', () => { this.closeModal(true); this._resumeOnClose = false; g.state = 'play'; g.enterPhotoMode(); }],
         ...(g.routes && g.routes.active ? [['Restart route', () => { this.closeModal(true); this._resumeOnClose = false; g.pause(false); g.routes.restart(); }], ['Exit route', () => { this.closeModal(true); this._resumeOnClose = false; g.pause(false); g.routes.exit(); }]] : []),
+        ...(g.encounters?.active ? [['Cancel encounter',()=>{g.encounters.cancel();this.closeModal();}]] : g.encounters?.lastResult ? [['Retry encounter',()=>{this.closeModal(true);this._resumeOnClose=false;g.pause(false);g.encounters.retry();}]] : []),
         ['Help', () => this.openHelp()], ['Quit to Title', () => { g.save.save(true); location.reload(); }],
       ];
       for (const [l, f] of items) grid.appendChild(this.btn(l, f));
@@ -378,12 +383,21 @@ TL.UIManager = class {
       this.drawMap(cv);
       cv.onclick = (e) => {
         const r = cv.getBoundingClientRect(), E = this.mapExtent(); const x = (e.clientX - r.left) / r.width * E - E / 2, z = (e.clientY - r.top) / r.height * E - E / 2;
-        this.setWaypoint(new THREE.Vector3(x, 30, z)); this.drawMap(cv); this.toast('Waypoint set');
+        const site=this.worksiteAtMapPoint(x,z,18/720*E);
+        this.setWaypoint(site ? new THREE.Vector3(site.start.x,site.start.y,site.start.z) : new THREE.Vector3(x, 30, z));
+        this.drawMap(cv); this.toast(site ? site.name+' · waypoint set' : 'Waypoint set');
       };
     };
     if (fromPause) this.sub('CITY MAP', build); else this.openModal('CITY MAP', build);
   }
   mapExtent() { return this.game.scanMode ? 1960 : 1700; }
+  worksiteRoutes() { return this.game.routes ? this.game.routes.defs.filter(d=>d.kind==='worksite') : []; }
+  worksiteAtMapPoint(x,z,radius) {
+    if(!this.mapFilters.worksites)return null;
+    let nearest=null,dist=radius*radius;
+    for(const d of this.worksiteRoutes()) { const dd=(d.start.x-x)**2+(d.start.z-z)**2;if(dd<=dist){nearest=d;dist=dd;} }
+    return nearest;
+  }
   drawMap(cv) {
     const g = this.game, ctx = cv.getContext('2d'), E = this.mapExtent(), S = cv.width / E, L = g.layout;
     const X = (x) => (x + E / 2) * S, Z = (z) => (z + E / 2) * S;
@@ -413,6 +427,11 @@ TL.UIManager = class {
     if (F.activities) for (const a of M.activities) icon(a.p, M.activityDone.has(a.id) ? '#557' : '#40c0ff', M.activityDone.has(a.id) ? '' : a.name);
     if (F.caches) for (const c of M.caches) if (c.found) icon(c.p, '#40e0ff');
     if (F.landmarks) for (const lm of g.streamer.landmarks) icon(lm, '#ff80ff', '📷 ' + lm.name);
+    if (F.worksites) for (const d of this.worksiteRoutes()) {
+      const x=X(d.start.x),z=Z(d.start.z);ctx.fillStyle='#ffad50';ctx.beginPath();
+      ctx.moveTo(x,z-7);ctx.lineTo(x+7,z);ctx.lineTo(x,z+7);ctx.lineTo(x-7,z);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#fff';ctx.font='11px sans-serif';ctx.fillText(d.name,x+10,z+4);
+    }
     for (const n of ['WEAVER', 'PULSE']) icon(g.heroes[n].ctrl.pos, n === 'WEAVER' ? '#ffb030' : '#40f0e0', n);
     if (this.waypoint) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(this.waypoint.x), Z(this.waypoint.z), 10, 0, Math.PI * 2); ctx.stroke(); }
   }
@@ -426,12 +445,30 @@ TL.UIManager = class {
       b.appendChild(this.el('h3', {}, 'Story'));
       for (const d of M.available()) { const r = this.el('div', { class: 'row' }, '<span>★ ' + d.title + ' — ' + d.brief + '</span>'); r.appendChild(this.btn('Set waypoint', () => this.setWaypoint(d.start))); b.appendChild(r); }
       if (M.active) b.appendChild(this.el('p', {}, 'Active: <b>' + M.active.def.title + '</b> — ' + this.objective));
+      if(g.encounters){
+        b.appendChild(this.el('h3',{},'City in motion'));
+        for(const d of g.encounters.available()){
+          const row=this.el('div',{class:'row'},'<span><b>'+d.name+'</b> — '+d.blurb+'</span>');
+          row.appendChild(this.btn('Respond',()=>{this.closeModal(true);this._resumeOnClose=false;g.pause(false);g.encounters.start(d.id);}));b.appendChild(row);
+        }
+        if(g.encounters.active)b.appendChild(this.el('p',{class:'small'},'Responding: '+g.encounters.active.def.name+' · follow the objective marker.'));
+        if(g.encounters.lastResult&&!g.encounters.active)b.appendChild(this.btn('Retry last encounter',()=>{this.closeModal(true);this._resumeOnClose=false;g.pause(false);g.encounters.retry();}));
+      }
       if (g.routes && g.routes.defs.length) {
         b.appendChild(this.el('h3', {}, 'Traversal routes'));
-        for (const d of g.routes.defs) {
+        b.appendChild(this.el('p',{class:'small'},'Race your saved best: a pale ghost and split times appear after your first finish. Street Canyon offers cyan low gates or gold high gates. Either counts.'));
+        const routeRow = (d) => {
           const best = g.routes.best[d.id], m = best && best.medal ? { gold: ' ★★★', silver: ' ★★', bronze: ' ★' }[best.medal] : '';
-          const r = this.el('div', { class: 'row' }, '<span>' + d.name + ' — ' + d.blurb + ' · ' + Math.round(new THREE.Vector3(d.start.x, d.start.y, d.start.z).distanceTo(h.pos)) + ' m' + (best ? ' · best ' + g.routes.fmt(best.time) + m : '') + '</span>');
+          const reward=d.kind==='worksite' && !(best&&best.rewarded) ? ' · first finish '+d.reward+' XP' : '';
+          const r = this.el('div', { class: 'row' }, '<span>' + d.name + ' — ' + d.blurb + ' · ' + Math.round(new THREE.Vector3(d.start.x, d.start.y, d.start.z).distanceTo(h.pos)) + ' m' + (best ? ' · best ' + g.routes.fmt(best.time) + m : '') + reward + '</span>');
           r.appendChild(this.btn('Set waypoint', () => this.setWaypoint(new THREE.Vector3(d.start.x, d.start.y, d.start.z)))); b.appendChild(r);
+        };
+        for (const d of g.routes.defs) if(d.kind!=='worksite')routeRow(d);
+        const sites=this.worksiteRoutes().sort((a,c)=>Math.hypot(a.start.x-h.pos.x,a.start.z-h.pos.z)-Math.hypot(c.start.x-h.pos.x,c.start.z-h.pos.z));
+        if(sites.length){
+          b.appendChild(this.el('h3',{},'Worksite runs'));
+          b.appendChild(this.el('p',{class:'small'},'Find the orange diamonds on the map. Explore the cranes, open floors and pipe passages freely, or reach a start marker and press E to race. Your best run becomes a ghost to chase.'));
+          for(const d of sites)routeRow(d);
         }
       }
       b.appendChild(this.el('h3', {}, 'Community requests & activities nearby'));
@@ -552,7 +589,12 @@ TL.UIManager = class {
       b.appendChild(this.slider('Aim / chase assist', () => s.aimAssist, (v) => (s.aimAssist = v), 0, 100, 5));
       b.appendChild(this.slider('Game speed', () => s.gameSpeed, (v) => (s.gameSpeed = v), 0.5, 1.0, 0.05));
       b.appendChild(this.el('h3', {}, 'Audio'));
-      for (const k of ['master', 'music', 'sfx', 'ambience', 'ui']) b.appendChild(this.slider(k[0].toUpperCase() + k.slice(1) + ' volume', () => s.vol[k], (v) => { s.vol[k] = v; g.audio.applyVolumes(); }, 0, 1));
+      const mp = g.audio && g.audio.music;
+      if (mp && mp.ok) {
+        b.appendChild(this.toggle('Music playlist (your mp3)', () => s.musicTrack !== false, (v) => { mp.setEnabled(v); g.save.saveSettings(); }));
+        if (mp.tracks.length > 1) b.appendChild(this.btn('Next song', () => mp.next(false)));
+      }
+      for (const k of ['master', 'music', 'sfx', 'ambience', 'ui']) b.appendChild(this.slider(k[0].toUpperCase() + k.slice(1) + ' volume', () => s.vol[k], (v) => { s.vol[k] = v; g.audio.applyVolumes(); g.save.saveSettings(); }, 0, 1));
       b.appendChild(this.toggle('Mono audio', () => s.mono, (v) => { s.mono = v; g.audio.applyVolumes(); }));
       b.appendChild(this.toggle('Show FPS / XYZ / speed', () => s.showFps, (v) => (s.showFps = v)));
       b.appendChild(this.toggle('Physics debug (F3)', () => s.debugPhysics, (v) => (s.debugPhysics = v)));
@@ -630,8 +672,9 @@ TL.UIManager = class {
         '<div><h3>Combat</h3>LMB attack (chains) · T heavy / launcher<br>Ctrl+LMB in air = ground slam / Pulse Dive<br>Q dodge (perfect dodge) · F parry (perfect parry)<br>RMB aim · Aim+E tether pull / strike / disarm / throw<br>1-3 abilities · Aim+1/2 alt abilities · 4 ultimate<br>R gadget · Tab cycle · H heal · G finisher<br>MMB / L target lock<br>Stealth: attack an unaware enemy = takedown<br>X while perched = Tension Bridge</div>' +
         '<div><h3>World</h3>C scan · V switch hero · M map<br>B Spider-Jump · N Spider-Dash<br>Q wing dodge · E air zip / point zip<br>E + A/D while swinging: corner tether<br>Ctrl during a fast swing: loop reel<br>J retract / deploy arms · K CITYLINK<br>Routes: E at a route start · Backspace restart<br>P photo mode · Esc pause<br>F1 help · F3 physics debug · F4 perf<br>[ pause physics · ] step one tick<br><br><h3>Gamepad</h3>RT swing · A jump · X attack · B dodge<br>RB parry · Y tether · LB gadget · LT aim<br>L3 dive · R3 lock · D-pad: scan/switch/glide/sling<br>Start pause · Back map</div></div>';
     };
-    if (fromTitle) this.openModal('CONTROLS', build, { back: () => {} });
-    else this.openModal('HELP', build);
+    const fullBuild=body=>{build(body);body.appendChild(this.el('p',{class:'small'},'Surface flow: keep steering along a wall to round clear corners. Fast upward runs carry over clear roof edges; overhead contact transitions into ceiling crawl. Holding your swing keeps the web on wall contact. Space pushes off. K → City in motion starts chases, vehicle interceptions and rescues; E acts when the nearby prompt appears.'));body.appendChild(this.el('p',{class:'small'},'Construction sites: orange diamonds on M, or K → Worksite runs. While airborne, face a clear pipe or water-tower opening and press E to zip through. Swing from crane beams, run the open floors, or press E at a nearby orange start marker to race.'));};
+    if (fromTitle) this.openModal('CONTROLS', fullBuild, { back: () => {} });
+    else this.openModal('HELP', fullBuild);
   }
   /* ---------------------------------------------------------------- photo mode */
   openPhoto() {

@@ -275,3 +275,98 @@ TL.CatchMotion = {
   },
   legBlend(C) { return TL.smooth(0, 0.16, C.t); },
 };
+
+/* Facade locomotion: diagonal hand/foot support, a lifted recovery stroke and
+   world-space contact locks. The tethered version owns legs and the free hand;
+   the loaded wrist continues using the ordinary swing rope solver. */
+TL.WallMotion={
+  pose(an,h,dt,put,D,iks){
+    const speed=h.vel.length(),run=h.state===TL.TS.WALL||!!h.swingWall;
+    const moving=TL.smooth(.08,.8,speed),mechanical=an.arms&&!an.arms.retracted?an.arms.deployment:0;
+    const previous=an.wallPhase||0;
+    an.wallPhase=previous+dt*Math.min(run?22:13,speed*(run?2.3:4.6));
+    if(h.state!==TL.TS.WALL&&speed>.25&&Math.floor(an.wallPhase/Math.PI)!==Math.floor(previous/Math.PI)){
+      an.steps++;an.stepSurf='wall';an.stepSpeed=speed;
+    }
+    const phase=an.wallPhase,protectedHands=new Set(iks.map(k=>k.hand));
+    for(const [side,sg]of [['L',1],['R',-1]]){
+      const a=phase+(sg<0?Math.PI:0),drive=Math.sin(a)*moving,lift=Math.max(0,Math.cos(a))*moving;
+      const hip=(run?.65:1.03)+drive*(run?.75:.42),knee=(run?1.15:1.55)+lift*(run?.95:.45);
+      put('thigh'+side,D(sg*(run?.13:.36),-Math.cos(hip),Math.sin(hip)));
+      put('shin'+side,D(sg*.06,-Math.cos(hip-knee),Math.sin(hip-knee)));
+      put('foot'+side,D(sg*.08,.2+lift*.25,1));
+      if(!protectedHands.has(side)){
+        // The opposite palm advances as the knee drives. With deployed claws,
+        // elbows sit closer to the ribs while the extra limbs carry the load.
+        put('uarm'+side,D(sg*(.65-mechanical*.2),.35-drive*.6,.68));
+        put('farm'+side,D(-sg*.12,.45-drive*.35,.8));
+        put('hand'+side,D(sg*.1,.65,.75));
+      }
+    }
+    an.rig.hipsOffT.set(Math.sin(phase)*moving*(run?.025:.045),0,-.035+Math.cos(phase*2)*moving*.018);
+    an.wallGait={run,moving,phase,mechanical};
+    return{lean:run?.08:.18,twist:Math.sin(phase)*moving*(run?.12:.07)};
+  },
+  plant(an,h,dt,iks){
+    const rig=an.rig,g=an.wallGait;if(!g)return;
+    const normal=h.state===TL.TS.CEIL?new THREE.Vector3(0,-1,0):h.wallN,inv=an.rootQ.clone().invert(),speed=h.vel.length();
+    const held=new Set(iks.map(k=>k.hand));
+    const contacts=an.wallContacts||(an.wallContacts={});
+    const up=new THREE.Vector3(0,1,0).applyQuaternion(an.rootQ);
+    const lateral=new THREE.Vector3(1,0,0).applyQuaternion(an.rootQ);
+    const travel=h.vel.clone().addScaledVector(normal,-h.vel.dot(normal));
+    if(travel.lengthSq()>.01)travel.normalize();else travel.copy(up);
+    for(const n of rig.order)rig.target[n].copy(rig.cur[n]);
+    rig.hipsOffT.copy(rig.hipsOff);rig.hipsQT.copy(rig.hipsQ);
+    for(const leg of [true,false])for(const [side,sg]of [['L',1],['R',-1]]){
+      const key=(leg?'foot':'hand')+side;
+      if(!leg&&held.has(side)){delete contacts[key];continue;}
+      const upper=(leg?'thigh':'uarm')+side,lower=(leg?'shin':'farm')+side;
+      const base=rig.P[upper].clone().applyQuaternion(an.rootQ).add(an.meshPos);
+      const length1=leg?rig.thigh:rig.upperArm,length2=leg?rig.shin:rig.foreArm,maxReach=(length1+length2)*.975;
+      const cycle=((g.phase/(Math.PI*2)+(sg<0?.5:0)+(leg?0:.5))%1+1)%1;
+      const duty=g.run?.56:.72,stance=!g.moving||cycle<duty;
+      let c=contacts[key];
+      if(c&&(c.normal.dot(normal)<.96||base.distanceTo(c.p)>maxReach))c=contacts[key]=null;
+      // Place the ankle/palm against the actual facade. A step advances in the
+      // movement direction, so sideways and downward crawling work as well.
+      const swing=g.moving?TL.smooth(duty,1,cycle):0;
+      const reachAhead=g.moving?(g.run?.24:.18):0;
+      const probe=base.clone().addScaledVector(lateral,sg*(leg?(g.run?.09:.2):.16));
+      probe.addScaledVector(up,leg?-.29:.16).addScaledVector(travel,reachAhead);
+      probe.addScaledVector(normal,.2);
+      const hit=(!c||!stance)?h.world.raycast(probe.x,probe.y,probe.z,-normal.x,-normal.y,-normal.z,maxReach+.5,
+        col=>col.solid&&col.climb&&(h.state===TL.TS.CEIL?col===h.ceilCol:!h.wallCol||col===h.wallCol),null,{noGround:true}):null;
+      const target=hit?new THREE.Vector3(hit.x,hit.y,hit.z).addScaledVector(normal,h.state===TL.TS.CEIL?(leg?.15:.103):leg?.065:.04):null;
+      if(stance){
+        if(!c&&target&&base.distanceTo(target)<maxReach)c=contacts[key]={p:target.clone(),normal:normal.clone(),planted:true};
+        if(c)c.planted=true;
+      }else{
+        if(target){
+          if(!c)c=contacts[key]={p:target.clone(),normal:normal.clone(),planted:false};
+          if(c.planted)c.from=c.p.clone();
+          c.planted=false;
+          c.p.copy(c.from||target).lerp(target,swing).addScaledVector(normal,Math.sin(swing*Math.PI)*(leg?.16:.1));
+        }
+      }
+      if(!c){
+        if(h.state===TL.TS.CEIL){
+          // At an overhang edge a missing contact means lift/withdraw; never
+          // leave the canned reaching hand or foot pointing through the slab.
+          const target=rig.P[upper].clone().add(new THREE.Vector3(sg*.2,leg?-.35:.1,-.22));
+          const a=new THREE.Vector3(),b=new THREE.Vector3();
+          rig.ik2(rig.P[upper],target,length1,length2,TL.dirv(sg,.1,-1),a,b);
+          rig.set(upper,a);rig.set(lower,b);rig.set(key,travel.clone().addScaledVector(normal,.5).normalize().applyQuaternion(inv));
+        }
+        continue;
+      }
+      const local=c.p.clone().sub(an.meshPos).applyQuaternion(inv),a=new THREE.Vector3(),b=new THREE.Vector3();
+      // Knees and elbows bend outward and away from the wall, never through it.
+      const pole=h.state===TL.TS.CEIL?normal.clone().multiplyScalar(.8).addScaledVector(lateral,sg*.65).normalize().applyQuaternion(inv):leg?TL.dirv(sg*(g.run?.55:1),.3,-.7):TL.dirv(sg,.05,-.65);
+      rig.ik2(rig.P[upper],local,length1,length2,pole,a,b);
+      rig.set(upper,a);rig.set(lower,b);
+      rig.set(key,h.state===TL.TS.CEIL?travel.clone().addScaledVector(normal,.12).addScaledVector(lateral,sg*.08).normalize().applyQuaternion(inv):leg?TL.dirv(sg*.08,.85,.35):TL.dirv(sg*.08,.75,.35));
+    }
+    rig.apply(0);
+  }
+};

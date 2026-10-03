@@ -351,6 +351,7 @@ TL.HeroController = class {
     this.facing = 0;                        // yaw (radians) the body faces
     this.grounded = false; this.groundCol = null; this.groundY = 0;
     this.wallN = new THREE.Vector3(); this.wallCol = null; this.wallTime = 0; this.wallMode = 'up';
+    this.swingWall = false;                    // wall contact overlays the live pendulum, never replaces it
     this.ceilCol = null;
     this.contacts = []; for (let i = 0; i < 24; i++) this.contacts.push({ nx: 0, ny: 0, nz: 0, depth: 0, col: null, vn: 0, yOff: 0 });
     this.nContacts = 0;
@@ -382,11 +383,12 @@ TL.HeroController = class {
   emit(e, a, b) { if (this.onEvent) this.onEvent(e, a, b); TL.bus.emit('hero:' + e, a, b); }
   setStats(s) { this.stats = s; this.mass = s.mass; }
   teleport(x, y, z) {
+    this.swingWall = false;
     this.perchSupport=null;
     if(this.reference){this.reference.action=null;this.reference.loop=null;}
     this.pos.set(x, y, z); this.prevPos.copy(this.pos); this.vel.set(0, 0, 0);
     this.tether.releaseAll(); this.fsm.set(TL.TS.AIR, 'teleport'); this.safePos.copy(this.pos); this.safeVel.set(0, 0, 0);
-    this.action = null; this.contactPlan = null; this.corner = null; this.tuck = 0; if (TL.BodyShapes) this.shape = TL.BodyShapes.stand;
+    this.action = null; this.contactPlan = null; this.corner = null; this.roofFlow=null;this.ceilCarry=0;this.tuck = 0; if (TL.BodyShapes) this.shape = TL.BodyShapes.stand;
   }
 
   /* ---------------------------------------------------------------- fixed step */
@@ -442,7 +444,7 @@ TL.HeroController = class {
     }
     this.releaseBoostWindow = Math.max(0, this.releaseBoostWindow - dt);
     // SWING: start (in air / wall / perch) or chain
-    if (it.swingPressed && (st === S.AIR || st === S.DIVE || st === S.GLIDE || st === S.WALL || st === S.PERCH || st === S.WATER || st === S.CRAWL || (it.singleHand && st === S.SWING))) {
+    if (it.swingPressed && (st === S.AIR || st === S.DIVE || st === S.GLIDE || st === S.WALL || st === S.PERCH || st === S.WATER || st === S.CRAWL || st === S.CEIL || (it.singleHand && st === S.SWING))) {
       this.tryStartSwing(it);
     } else if (it.swingPressed && (st === S.GROUND || st === S.RECOVER)) {
       // ground swing start: a real jump first, then the line fires (only if a valid anchor exists)
@@ -490,8 +492,11 @@ TL.HeroController = class {
     return true;
   }
   releaseSwing(boost, it) {
+    this.corner=null;
     const r = this.tether.main;
     const V = this.vel;
+    const offWall = this.swingWall;
+    this.swingWall = false;
     if (boost && r.attached) {
       // muscle yank + release: a short impulse along the way the hero is already travelling (momentum carries
       // through); when too slow to have a heading, along the stick / camera. Best timed on the rise.
@@ -511,6 +516,11 @@ TL.HeroController = class {
       this.style += 25 * rising;
       this.emit('releaseboost', rising);
       this.releaseBoostWindow = 0.3;
+    }
+    // A deliberate jump plants the feet and pushes clear; ordinary release keeps all tangent momentum.
+    if (boost && offWall) {
+      const vn = V.x * this.wallN.x + V.z * this.wallN.z;
+      V.x += this.wallN.x * Math.max(0, 5 - vn); V.z += this.wallN.z * Math.max(0, 5 - vn);
     }
     r.release();
     this.fsm.set(TL.TS.AIR, boost ? 'release-jump' : 'release');
@@ -568,6 +578,10 @@ TL.HeroController = class {
 
   /* ---------------------------------------------------------------- substep integration */
   substep(h, it) {
+    if(TL.SurfaceFlow){
+      TL.SurfaceFlow.roofStep(this,h);
+      if(this.fsm.state===TL.TS.WALL||this.fsm.state===TL.TS.CRAWL||this.swingWall)TL.SurfaceFlow.corner(this,h,it);
+    }
     const S = TL.TS, st = this.fsm.state, P = this.pos, V = this.vel, st8 = this.stats;
     const G = TL.C.G;
     const a = this.acc.set(0, -G, 0);
@@ -594,8 +608,13 @@ TL.HeroController = class {
       case S.RECOVER: this.recoverForces(a, h, it); break;
       case S.VAULT: TL.Contact.actionStep(this, a, h, it); break;
     }
+    // A committed two-rim zip redirects existing momentum along its validated
+    // route. Cancel ambient drag/gravity only during this short guided passage;
+    // ordinary integration and collision response below remain authoritative.
+    if(TL.ReferenceTraversal?.advancePassage(this,h))a.set(0,0,0);
     // integrate (semi-implicit Euler)
     V.x += a.x * h; V.y += a.y * h; V.z += a.z * h;
+    if(this.corner?.flow)TL.SurfaceFlow.cornerStep(this,h);
     // rope constraints
     const T = this.tether;
     for (let i = 0; i < 2; i++) {
@@ -639,6 +658,7 @@ TL.HeroController = class {
     P.x += V.x * h; P.y += V.y * h; P.z += V.z * h;
     this.preVel.copy(V);                      // velocity before contacts remove the into-surface part
     this.collide(h, it);
+    if(this.corner?.flow)TL.SurfaceFlow.cornerPost(this);
     if (this.fsm.state === S.VAULT) TL.Contact.actionPost(this, it);
     this.transitions(h, it);
     this.updateDebug();
@@ -690,6 +710,12 @@ TL.HeroController = class {
   }
   swingForces(a, h, it) {
     const r = this.tether.main, V = this.vel, P = this.pos, st8 = this.stats;
+    if (this.swingWall) {
+      // Feet grip only along the surface normal. The live rope and swing forces continue to own
+      // the arc: no wall-run speed reset, crawl damping, upward conversion or extra tangent boost.
+      const vn = V.x * this.wallN.x + V.z * this.wallN.z;
+      if (vn < 1.5) { a.x -= this.wallN.x * 12; a.z -= this.wallN.z * 12; }
+    }
     const pv = r.pivot();
     const nx = P.x - pv.x, ny = P.y - pv.y, nz = P.z - pv.z; const d = Math.hypot(nx, ny, nz) || 1;
     const ux = nx / d, uy = ny / d, uz = nz / d;               // rope direction (anchor -> player)
@@ -813,6 +839,8 @@ TL.HeroController = class {
   }
   wallForces(a, h, it) {
     const V = this.vel, n = this.wallN, st8 = this.stats;
+    if(this.corner?.flow){a.set(0,this.fsm.state===TL.TS.CRAWL?0:-TL.C.G*.15,0);return;}
+    if(this.roofFlow){a.set(0,-TL.C.G*.35,0);return;}
     if (this.corner) {
       // around an outer corner: the body circles the vertical edge at contact distance while the
       // wall normal turns with it — hands and feet transfer face to face, nothing snaps 90 degrees
@@ -859,6 +887,7 @@ TL.HeroController = class {
     const V = this.vel;
     a.set(0, 25, 0);                                               // grip pulls up into the ceiling
     V.y = Math.min(V.y, 0.5);
+    if(this.ceilCarry>0){this.ceilCarry=Math.max(0,this.ceilCarry-h);a.x+=it.move.x*3;a.z+=it.move.z*3;return;}
     const sp = 3.5;
     V.x = TL.damp(V.x, it.move.x * sp, 10, h); V.z = TL.damp(V.z, it.move.z * sp, 10, h);
   }
@@ -1005,6 +1034,7 @@ TL.HeroController = class {
   /* ---------------------------------------------------------------- state transitions */
   transitions(h, it) {
     const S = TL.TS, fsm = this.fsm, st = fsm.state, V = this.vel, P = this.pos;
+    if (st !== S.SWING) this.swingWall = false;
     const hs = Math.hypot(V.x, V.z);
     // WATER
     if (this.inWater && st !== S.WATER && st !== S.SWING && st !== S.LAUNCH) {
@@ -1045,8 +1075,8 @@ TL.HeroController = class {
         else if (this._ceilContact && this._ceilContact.col && this._ceilContact.col.climb && V.y > -2) { fsm.set(S.CEIL, 'ceiling'); this.ceilCol = this._ceilContact.col; }
         break;
       case S.SWING:
-        if (this.grounded && V.y <= 0.5) { this.tether.releaseAll(); this.land(it); }
-        else if (this._wallContact && this._wallContact.col && this.impact > 4 && this._wallContact.col.climb) { this.tether.releaseAll(); this.enterWall(this._wallContact, it); }
+        if (this.grounded && V.y <= 0.5) { this.swingWall = false; this.tether.releaseAll(); this.land(it); }
+        else this.swingWallUpdate(h,it);
         break;
       case S.GLIDE:
         if (this.grounded) { this.land(it); break; }
@@ -1056,7 +1086,13 @@ TL.HeroController = class {
         this.wallUpdate(h, it);
         break;
       case S.CEIL:
-        if (!this._ceilContact && !this.probeCeiling()) fsm.set(S.AIR, 'ceiling-lost');
+        if(this._wallContact?.col?.climb&&!TL.isClimbPole(this._wallContact.col)&&it.move.lengthSq()>.1){
+          const hit=this._wallContact,n=this.wallN.set(hit.nx,0,hit.nz).normalize();
+          const speed=Math.min(this.preVel.length(),Math.hypot(this.preVel.x,this.preVel.z));
+          this.wallCol=hit.col;V.addScaledVector(n,-V.dot(n));V.y=-speed*.85;
+          if(V.length()>this.preVel.length())V.setLength(this.preVel.length());
+          this.wallMode='side';this.wallTime=0;fsm.set(S.WALL,'ceiling-to-wall');this.emit('surfacehandoff','wall');
+        }else if (!this._ceilContact && !this.probeCeiling()) fsm.set(S.AIR, 'ceiling-lost');
         if (this.jumpBuffer > 0 || it.dive) { this.jumpBuffer = 0; V.y = -3; fsm.set(S.AIR, 'ceiling-drop'); }
         break;
       case S.PERCH:
@@ -1136,8 +1172,9 @@ TL.HeroController = class {
       const p = this.contactPlan;
       if (p && p.d0 <= p.takeoff + Math.hypot(this.vel.x, this.vel.z) * dt) { this._leadFoot = this._leadFoot === 'L' ? 'R' : 'L'; C.start(this, p); }
     } else if (st !== S.VAULT) this.contactPlan = null;
+    if(TL.SurfaceFlow&&TL.SurfaceFlow.roof(this,it))return;
     // wall: reaching the roof edge becomes a climb over the lip (hands, shoulders, knee, settle)
-    if ((st === S.WALL || st === S.CRAWL) && !this.corner && this.wallCol && this._probeK % 2 === 0) {
+    if ((st === S.WALL || st === S.CRAWL) && !this.corner && !this.roofFlow && this.wallCol && this._probeK % 2 === 0) {
       const top = this.wallCol.cy + this.wallCol.hy, P = this.pos;
       const climbing = st === S.CRAWL ? this.vel.y > 0.2 && P.y > top - 2.0 : this.wallMode === 'up' && this.vel.y > 1 && P.y > top - 2.4;
       if (climbing) { const plan = C.planClimbOver(this, it); if (plan && plan.hgt < (st === S.CRAWL ? 1.95 : 2.25)) C.start(this, plan); }
@@ -1157,6 +1194,27 @@ TL.HeroController = class {
   }
   damage(n, src) { this.health = Math.max(1, this.health - n); this.emit('damage', n, src); }
 
+  swingWallUpdate(h,it) {
+    if(this.corner?.flow&&this.tether.main.active&&this.tether.main.attached){this.swingWall=true;return;}
+    const r = this.tether.main, P = this.pos, V = this.vel, n = this.wallN;
+    if (!r.active || !r.attached || r.kind !== 'swing') { this.swingWall = false; return; }
+    let hit = this._wallContact;
+    if (!hit && this.swingWall && V.x * n.x + V.z * n.z < 1.5) {
+      hit = this.world.raycast(P.x, P.y, P.z, -n.x, 0, -n.z, TL.C.CAP_R + 0.25,
+        (c) => c.solid && c.climb, null, { noGround: true });
+    }
+    if (!hit || !hit.col || !hit.col.climb || Math.abs(hit.ny) > 0.35 || TL.isClimbPole(hit.col)) {
+      this.swingWall = false; return;         // edge, roof or outward rope pull: flow back into the same swing
+    }
+    const entered = !this.swingWall;
+    n.set(hit.nx, 0, hit.nz).normalize();
+    if (V.x * n.x + V.z * n.z > 1.5) { this.swingWall = false; return; }
+    this.swingWall = true; this.wallCol = hit.col;
+    this.wallTime = entered ? 0 : this.wallTime + h;
+    this.wallMode = Math.abs(V.y) > Math.hypot(V.x, V.z) ? 'up' : 'side';
+    if (hit.x !== undefined) (this._wallPt || (this._wallPt = new THREE.Vector3())).set(hit.x, hit.y, hit.z);
+    if (entered) this.emit('wall', 'swing');
+  }
   enterWall(c, it) {
     const S = TL.TS, V = this.vel, PV = this.preVel;
     const n = this.wallN.set(c.nx, 0, c.nz).normalize();
@@ -1183,6 +1241,8 @@ TL.HeroController = class {
   }
   wallUpdate(h, it) {
     const S = TL.TS, V = this.vel, P = this.pos, n = this.wallN, W = this.world;
+    if(TL.SurfaceFlow&&TL.SurfaceFlow.ceiling(this,it))return;
+    if(this.roofFlow)return;
     // predictive probe into the wall
     if (this.corner) {
       if (this.jumpBuffer > 0) { this.corner = null; }           // leaping off mid-corner is always allowed
@@ -1208,34 +1268,8 @@ TL.HeroController = class {
       if (col && P.y > col.cy + col.hy - 1.2) {
         const plan = TL.Contact && TL.Contact.planClimbOver(this, it);
         if (plan) { TL.Contact.start(this, plan); return; }
-        V.set(-n.x * 3.5, Math.max(V.y, 6.5), -n.z * 3.5);
+        // A missed/blocked crest departs with its real velocity, never a canned boost.
         this.fsm.set(S.AIR, 'wall-crest'); this.emit('vault');
-        return;
-      }
-      // outer corner: look around the corner for the adjacent face
-      const tx = -n.z, tz = n.x; const vt = V.x * tx + V.z * tz; const sg = Math.sign(vt) || 1;
-      const cx = P.x - n.x * 0.9 + tx * sg * 0.9, cz = P.z - n.z * 0.9 + tz * sg * 0.9;
-      const back = W.raycast(cx + tx * sg * 0.8, P.y, cz + tz * sg * 0.8, -tx * sg, 0, -tz * sg, 2.0, (c) => c.solid, null, { noGround: true });
-      const wantsCorner = (-n.x * it.camFwd.x - n.z * it.camFwd.z) > 0.25 || (it.move.lengthSq() > 0.1 && (-n.x * it.move.x - n.z * it.move.z) > 0.3);
-      if (back && back.col && back.col.climb && wantsCorner) {
-        // wrap around the outer corner (only when the player looks/steers around it):
-        // new face normal = old travel direction; continue behind the old face with the same speed
-        const ox = n.x, oz = n.z, sp = Math.abs(vt);
-        const bl = Math.hypot(back.nx, back.nz) || 1, n1x = back.nx / bl, n1z = back.nz / bl;
-        // the vertical edge: intersection of the old face (through the last wall contact) and the new face
-        const q = this._wallPt, det = ox * n1z - oz * n1x;
-        if (q && Math.abs(det) > 0.25) {
-          const k0 = ox * q.x + oz * q.z, k1 = n1x * back.x + n1z * back.z;
-          const E = { x: (k0 * n1z - oz * k1) / det, z: (ox * k1 - n1x * k0) / det };
-          const r = TL.C.CAP_R + 0.03, a0 = Math.atan2(P.x - E.x, P.z - E.z), da = TL.wrapAngle(Math.atan2(n1x, n1z) - a0);
-          this.corner = { E, r, a0, da, t: 0, dur: TL.clamp(Math.abs(da) * r / Math.max(sp, 2.2), 0.24, 0.5), sp: Math.max(sp, 1.5), out: { x: -ox, z: -oz }, col: back.col, n0: { x: ox, z: oz }, n1: { x: n1x, z: n1z }, side: sg };
-          this.emit('corner', this.corner);
-          return;
-        }
-        this.wallN.set(n1x, 0, n1z);
-        P.x = back.x + n1x * (TL.C.CAP_R + 0.02); P.z = back.z + n1z * (TL.C.CAP_R + 0.02);
-        V.x = -ox * sp; V.z = -oz * sp;
-        this.wallCol = back.col; this.emit('corner');
         return;
       }
       this._wallLostT = this.simT || 0; this.fsm.set(S.AIR, 'wall-lost');
@@ -1263,7 +1297,7 @@ TL.HeroController = class {
       V.set(-n.x * 3, 5.5, -n.z * 3); this.fsm.set(S.AIR, 'crawl-mantle'); this.emit('vault');
     }
     // ceiling transition: overhang above while crawling up
-    if (this._ceilContact && this._ceilContact.col && this.fsm.state === S.CRAWL) { this.fsm.set(S.CEIL, 'wall-to-ceiling'); this.ceilCol = this._ceilContact.col; }
+    // Ceiling handoffs are checked by SurfaceFlow.ceiling above.
   }
   probeCeiling() {
     const P = this.pos;

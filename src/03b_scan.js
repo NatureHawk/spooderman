@@ -286,7 +286,7 @@ TL.ScanWorld = class {
       if (this.replaced.has(b.id)) continue;
       const k = Math.floor(b.x / 160) + ',' + Math.floor(b.z / 160);
       if (!tiles.has(k)) tiles.set(k, []);
-      tiles.get(k).push(b);
+      tiles.get(k).push(this.constructionCuts?.get(b.id)?.cut||b);
     }
     const col = new THREE.Color(), trim = new THREE.Color();
     this.nycMeshes = [];
@@ -295,9 +295,9 @@ TL.ScanWorld = class {
       const P = new Float32Array(n * 9), Nn = new Float32Array(n * 9), C = new Float32Array(n * 9), Fa = new Float32Array(n * 12), Tr = new Float32Array(n * 9), UV = new Float32Array(n * 6);
       let t = 0;
       for (const b of list) {
-        const T = new Float32Array(B, b.o, b.n * 9);
+        const T = b._P || new Float32Array(B, b.o, b.n * 9);
         P.set(T, t * 9);
-        if (b.uo !== undefined) UV.set(new Float32Array(B, b.uo, b.n * 6), t * 6);
+        if (b.uo !== undefined) UV.set(b._UV || new Float32Array(B, b.uo, b.n * 6), t * 6);
         if (this.nycMat) col.setRGB(1, 1, 1); else col.setHex(b.c);
         trim.setHex(b.t);
         for (let k = 0; k < b.n; k++, t++) {
@@ -331,7 +331,7 @@ TL.ScanWorld = class {
     const S = N.boxes.stride || 6, X = new Float32Array(B, N.boxes.o, N.boxes.n * S), skip = this.replaced;
     for (let k = 0; k < N.boxes.n; k++) {
       const o = k * S; if (S > 6 && skip.has(X[o + 6])) continue;
-      const x = X[o], top = X[o + 1], z = X[o + 2], hy = (top + 1) / 2;
+      const x = X[o], top = Math.min(X[o + 1], this.constructionCuts?.get(X[o+6])?.cutY ?? Infinity), z = X[o + 2], hy = (top + 1) / 2;
       this.world.addStatic(x, top - hy, z, X[o + 3], hy, X[o + 4], X[o + 5], { kind: 'building', climb: true, src: 'nyc', bid: S > 6 ? X[o + 6] : 0 });
     }
   }

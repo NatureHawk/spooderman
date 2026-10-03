@@ -8,27 +8,33 @@
 
 /* One presentation signal. Never writes velocity, rope length or arm deployment. */
 TL.MotionFeedback = class {
-  constructor(game){this.game=game;this.speed=0;this.accel=0;this.energy=0;this.near=0;this.load=0;this.t=0;this.sampleT=0;this.cool=0;this.surface=null;this.clearT=0;this.previous=null;}
+  constructor(game){this.game=game;this.speed=0;this.accel=0;this.energy=0;this.near=0;this.load=0;this.loadRate=0;this.t=0;this.sampleT=0;this.cool=0;this.surface=null;this.clearT=0;this.previous=null;
+    this.nearNormal=new THREE.Vector3();this.nearPoint=new THREE.Vector3();this.nearPan=0;this.clearance=Infinity;this._point=new THREE.Vector3();this._relative=new THREE.Vector3();this._nearList=[];this.subject=null;this.rawSpeed=0;}
   update(dt){
     const g=this.game,h=g.hero.ctrl;if(dt<=0)return;this.t+=dt;
     const raw=h.vel.length(),jump=this.previous&&this.previous.distanceTo(h.pos)>Math.max(15,raw*dt*3);
-    const derivative=jump||!this.previous?0:(raw-this.speed)/Math.max(dt,.001);
+    if(this.subject!==h||jump){this.subject=h;this.speed=raw;this.rawSpeed=raw;this.accel=0;this.energy=0;this.load=0;this.loadRate=0;this.near=0;this.surface=null;this.sampleT=0;this.cool=.4;this.catchUntil=this.t+.4;this.nearNormal.set(0,0,0);}
+    const derivative=jump||!this.previous?0:(raw-this.rawSpeed)/Math.max(dt,.001);this.rawSpeed=raw;
     this.accel=TL.damp(this.accel,TL.clamp(derivative/90,-1,1),4,dt);
-    this.speed=TL.damp(this.speed,raw,8,dt);this.previous=h.pos.clone();
+    this.speed=TL.damp(this.speed,raw,8,dt);if(!this.previous)this.previous=new THREE.Vector3();this.previous.copy(h.pos);
     const rope=h.tether.main,oldLoad=this.load;this.load=TL.damp(this.load,rope&&rope.attached?TL.clamp(rope.tension/100,0,1):0,9,dt);
+    this.loadRate=TL.damp(this.loadRate,TL.clamp((this.load-oldLoad)/Math.max(dt,.001),-3,3),7,dt);
     if(oldLoad<.65&&this.load>=.65&&raw>20&&this.t>(this.catchUntil||0)){g.rig.shake?.(.065,.12);this.catchUntil=this.t+1.5;}
     this.sampleT-=dt;this.cool-=dt;
-    if(this.sampleT<=0){this.sampleT=.08;let nearest=null,dist=5.5,normal=null;
-      const list=g.world.query(h.pos.x-6,h.pos.z-6,h.pos.x+6,h.pos.z+6,[]);
-      for(const c of list){if(!c.solid)continue;const p=g.world.closest(c,h.pos.x,h.pos.y,h.pos.z,new THREE.Vector3()),d=p.distanceTo(h.pos);
-        if(d<dist&&d>.1){dist=d;nearest=c;normal=p.sub(h.pos).normalize();}}
+    if(this.sampleT<=0){this.sampleT=.08;let nearest=null,dist=5.5;
+      const list=g.world.query(h.pos.x-6,h.pos.z-6,h.pos.x+6,h.pos.z+6,this._nearList);
+      for(const c of list){if(!c.solid)continue;const p=g.world.closest(c,h.pos.x,h.pos.y,h.pos.z,this._point),d=p.distanceTo(h.pos);
+        if(d<dist&&d>.1){dist=d;nearest=c;this.nearPoint.copy(p);this.nearNormal.copy(p).sub(h.pos).normalize();}}
+      if(!nearest)this.nearNormal.set(0,0,0);
+      this.clearance=nearest?dist:Infinity;this.nearCollider=nearest;
       this.near=TL.clamp(1-dist/5.5,0,1);
-      const rel=nearest?h.vel.clone().sub(nearest.pointVel(h.pos.x,h.pos.z,new THREE.Vector3())):h.vel;
-      const tangent=normal?Math.sqrt(Math.max(0,rel.lengthSq()-rel.dot(normal)**2)):0;
+      this.nearPan=nearest?TL.clamp(this.nearNormal.dot(g.rig.right),-1,1):0;
+      const rel=this._relative.copy(h.vel);if(nearest)rel.sub(nearest.pointVel(h.pos.x,h.pos.z,this._point));
+      const tangent=nearest?Math.sqrt(Math.max(0,rel.lengthSq()-rel.dot(this.nearNormal)**2)):0;
       if(dist<2.5&&tangent>23&&nearest&&this.surface!==nearest.id&&this.cool<=0&&h.state!==TL.TS.GROUND&&h.state!==TL.TS.PERCH){
         this.surface=nearest.id;this.cool=1.4;this.clearT=0;
-        const pan=normal.dot(g.rig.right);g.audio.sfx('nearmiss',this.energy,{pan});
-        g.cityLife.emit('pass',h.pos,Math.min(1,raw/45));
+        const pan=this.nearPan;g.audio.sfx('nearmiss',this.energy,{pan});g.rig.kickNear?.(pan,Math.min(1,tangent/50)*this.near);
+        g.cityLife?.emit('pass',h.pos,Math.min(1,raw/45));
       }
       if(dist>4){this.clearT+=.08;if(this.clearT>.6)this.surface=null;}else this.clearT=0;
     }
@@ -74,6 +80,7 @@ TL.CameraRig = class {
   }
   kickLaunch(perfect) { this.launchKick = perfect ? 1 : .75; this.shake(.24,.16); }
   kickCatch(k) { const s = this.settings || TL.defaultSettings(); this.catchKick = Math.max(this.catchKick || 0, TL.clamp(k, 0, 0.6) * (s.reducedMotion ? 0.3 : 1)); }
+  kickNear(pan,k) { const s=this.settings||TL.defaultSettings();if(!s.reducedMotion)this.nearKick=TL.clamp(pan,-1,1)*TL.clamp(k,0,1); }
   /* hero: {pos (interpolated), vel, state, facing, wallN}. dt: real frame time */
   update(dt, hero) {
     const s = this.settings || TL.defaultSettings();
@@ -83,6 +90,7 @@ TL.CameraRig = class {
     const st = hero.state, S = TL.TS;
     const feedback=hero.feedback,energy=feedback?feedback.energy:TL.clamp((speed-7)/55,0,1);
     this.launchKick *= Math.exp(-4*dt);
+    this.nearKick=(this.nearKick||0)*Math.exp(-6*dt);if(s.reducedMotion)this.nearKick=0;
     const launchFx=s.reducedMotion?0:this.launchKick;
     this.idleT += dt;
     // auto-follow: gently recentre behind travel direction when the player isn't looking around
@@ -123,6 +131,7 @@ TL.CameraRig = class {
     this.glideLat = TL.damp(this.glideLat, gl && !s.reducedMotion ? -(hero.glide ? hero.glide.roll : 0) * 2.6 : 0, 2.2, dt);
     if (Math.abs(this.glideLat) > 1e-3) this.target.addScaledVector(this.right, this.glideLat);
     if (this.combatFocus) this.target.lerp(this.combatFocus, 0.25);
+    this.target.addScaledVector(this.right,-this.nearKick*.16*s.swingCam);
     const lam = st === S.SWING || st === S.GLIDE ? 9 : 14;
     this.smoothT.x = TL.damp(this.smoothT.x, this.target.x, lam, dt);
     this.smoothT.y = TL.damp(this.smoothT.y, this.target.y, lam * 0.7, dt);
@@ -161,6 +170,7 @@ TL.CameraRig = class {
       wantRoll = TL.clamp(-lat * 0.0015, -0.035, 0.035) * s.swingCam;
       if (st === S.GLIDE) wantRoll = -hero.glide.roll * 0.08;
     }
+    wantRoll+=this.nearKick*.009*s.swingCam;
     this.roll = TL.damp(this.roll, wantRoll, 3, dt);
     this.cam.rotateZ(this.roll);
     // shake

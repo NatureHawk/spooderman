@@ -27,6 +27,7 @@ TL.Buildings = {
     [['ashlar', 0.6], ['granite', 0.2], ['concrete', 0.2]],      // 7 civic
   ],
   async load(data) {
+    this.surfaceByBuilding = new Map();
     this.ok = false;
     const E = TL.Extra;
     if (!data.nyc || !E.has('bstyle.json') || !E.has('walltex_meta.json') || !E.has('walltex_albedo.webp')) return;
@@ -65,6 +66,7 @@ TL.Buildings = {
       // postwar / modern buildings whose scan colour reads as glass (blue / green over red) are curtain walls too
       const glassy = col[2] > col[0] * 1.08 || col[1] > col[0] * 1.1;
       const curtain = style === 5 || ((style === 4 || style === 6) && glassy) || (style === 6 && b.h > 60 && rng.next() < 0.5);
+      this.surfaceByBuilding.set(b.id, curtain ? 'glass' : kind);
       for (let c = 0; c < 3; c++) rec[o + 8 + c] = col[c];
       rec[o + 11] = curtain ? (rng.next() < 0.45 ? 0 : 0.55 + rng.next() * 0.7) : -1;
       rec[o + 12] = TL.clamp(b.fh || 3.9, 3.3, 4.6); rec[o + 13] = 1.2 + rng.next() * 0.45; rec[o + 14] = rng.next();
@@ -148,13 +150,13 @@ TL.Buildings = {
   tile(g, list) {
     if (!this.ok) return;
     const a = new Float32Array(g.attributes.position.count); let v = 0;
-    for (const b of list) { const i = this.idx.has(b) ? this.idx.get(b) + 1 : 0; for (let k = 0; k < b.n * 3; k++) a[v++] = i; }
+    for (const b of list) { const i = this.idx.has(b._source||b) ? this.idx.get(b._source||b) + 1 : 0; for (let k = 0; k < b.n * 3; k++) a[v++] = i; }
     g.setAttribute('aBld', new THREE.BufferAttribute(a, 1));
     const wc = new Uint8Array(g.attributes.position.count * 3); v = 0;
     if (this.wallCol) for (const b of list) {
-      const t0 = this.triStart.get(b);
+      const t0 = this.triStart.get(b._source||b);
       for (let k = 0; k < b.n; k++) {
-        const o = (t0 + k) * 3;
+        const o = (t0 + (b._triSource?b._triSource[k]:k)) * 3;
         for (let j = 0; j < 3; j++, v += 3) { wc[v] = this.wallCol[o]; wc[v + 1] = this.wallCol[o + 1]; wc[v + 2] = this.wallCol[o + 2]; }
       }
     }
@@ -421,7 +423,9 @@ void bqCurtainShade() {
   float cosT = clamp(dot(-Vw, bqN), 0.0, 1.0);
   float f0 = bqCurtain > 1.5 ? 0.08 : 0.14 + 0.1 * bqMetal;
   float fres = f0 + (1.0 - f0) * pow(1.0 - cosT, 5.0);
-  vec3 sky = Rr.y > 0.0 ? mix(uSkyH, uSkyZ, pow(clamp(Rr.y, 0.0, 1.0), 0.6)) : mix(uSkyH * 0.5, uSkyH * 0.12, clamp(-Rr.y * 2.5, 0.0, 1.0));
+  // Match sky and street at the horizon: a hard hemisphere switch draws a line across every facade.
+    vec3 sky = mix(uSkyH, uSkyZ, pow(clamp(Rr.y, 0.0, 1.0), 0.6));
+    sky = mix(sky, uSkyH * 0.12, smoothstep(0.0, 0.45, -Rr.y));
   facWall = bqWall;
   if (bqCurtain > 1.5) {                                             // punched window: dark frame, lighter stone sill
     facWall = mix(facWall, mix(bqWall, vec3(0.03, 0.03, 0.032), 0.65), clamp(bqFrame, 0.0, 1.0));

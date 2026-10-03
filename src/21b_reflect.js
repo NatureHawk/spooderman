@@ -77,10 +77,11 @@ TL.Render.setTier = function (t) {
   if (hadEnv && t < 2 && g && g.scene) { g.scene.environment = null; if (g.env) g.env.envT = 999; }
   if (!t || t < 2) { if (this.envRT) { this.envRT.dispose(); this.envRT = null; } }
   if (!t && this.probe) this.dispose();
-  this._ready = false; this.face = 0;
+  this._ready = false; this.face = 0; this._cycle = false; this._pendingFilter = false;
 };
 TL.Render.dispose = function () {
   if (this.probe) { this.probe.dispose(); this.probe = null; }
+  if (this.captureProbe) { this.captureProbe.dispose(); this.captureProbe = null; }
   if (this.envRT) { this.envRT.dispose(); this.envRT = null; }
   if (this.blurRT) { this.blurRT.dispose(); this.blurRT = null; }
   this.U.tlProbe.value = null; this._ready = false;
@@ -90,8 +91,11 @@ TL.Render.build = function (r) {
   const size = this.cfg.size;
   if (this.probe && this.probe.width === size) return;
   if (this.probe) this.probe.dispose();
-  this.probe = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
-  this.cc = new THREE.CubeCamera(0.3, 2400, this.probe);
+  if (this.captureProbe) this.captureProbe.dispose();
+  const make = () => new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+  this.probe = make();
+  this.captureProbe = this.cfg.mode === 'scene' ? make() : null;
+  this.cc = new THREE.CubeCamera(0.3, 2400, this.captureProbe || this.probe);
   this.U.tlProbe.value = this.probe.texture;
   this.U.tlProbeP.value.y = Math.log2(size);
   if (!this.pmrem) this.pmrem = new THREE.PMREMGenerator(r);
@@ -107,29 +111,66 @@ TL.Render.hide = function (g) {
 };
 TL.Render.unhide = function () { for (const o of this._hidden) o.visible = true; this._hidden.length = 0; };
 
-/* called by TL.Post.render before the main scene pass */
+/* Complete a coherent cube, then swap the two fixed buffers. Water never samples a
+   cube with a mix of old/new camera positions. Prefiltering runs on its own frame. */
+TL.Render.publish = function (r, scene) {
+  if (this.captureProbe) {
+    const old = this.probe; this.probe = this.captureProbe; this.captureProbe = old;
+    this.cc.renderTarget = this.captureProbe;
+  }
+  this.U.tlProbe.value = this.probe.texture;
+  this.envRT = this.pmrem.fromCubemap(this.blurCube(r).texture, this.envRT);
+  scene.environment = this.envRT.texture;
+  this.U.tlProbeP.value.x = 1; this.U.tlProbeP.value.z = 1;
+  this._ready = true; this._pendingFilter = false; this._cycle = false; this.face = 0;
+  this._publishedAt = performance.now();
+  (this._publishedCenter || (this._publishedCenter = new THREE.Vector3())).copy(this._center);
+  const env = TL.game && TL.game.env;
+  if (env) {
+    (this._publishedSun || (this._publishedSun = new THREE.Vector3())).copy(env.skyU.uSunDir.value);
+    this._publishedRain = env.rain || 0;
+  }
+  this.stats = this.stats || { faces: 0, filters: 0, skipped: 0 };
+  this.stats.filters++;
+};
+TL.Render.needsRefresh = function (camera, env, now) {
+  return !this._ready || !this._publishedCenter || camera.position.distanceToSquared(this._publishedCenter) > 144
+    || !this._publishedSun || this._publishedSun.dot(env.skyU.uSunDir.value) < 0.9997
+    || Math.abs((env.rain || 0) - (this._publishedRain || 0)) > 0.1
+    || now - (this._publishedAt || 0) > 5000;
+};
+/* Secondary work shares the shader-streaming budget and adapts only its refresh
+   cadence under sustained slow frames; simulation and selected quality stay intact. */
 TL.Render.update = function (r, scene, camera) {
-  const cfg = this.cfg, g = TL.game, env = g.env;
+  const cfg = this.cfg, g = TL.game, env = g && g.env;
   if (!cfg || !env) return;
-  this.build(r);
-  this.frame++;
-  const rt = this.probe, P = this.U.tlProbeP.value;
-  // sky mode: the sky dome only, whole cube every ~2 s (cheap); scene mode: one face per `period` frames
+  this.build(r); this.frame++;
+  const now = performance.now(), P = this.U.tlProbeP.value;
+  const perf = TL.Perf, scale = perf ? perf.secondaryScale || 1 : 1;
+  const busy = perf && perf.secondaryBusy(g);
+  this.stats = this.stats || { faces: 0, filters: 0, skipped: 0 };
   if (cfg.mode === 'sky') {
-    if (this._ready && this.frame % 120 !== 0) return;
-    this.captureSky(r, camera);
+    if (this._ready && now - (this._skyAt || 0) < 2000 * scale) return;
+    if (busy && this._ready) return;
+    this.captureSky(r, camera); this._skyAt = now;
     P.x = 1; P.z = 1; this._ready = true;
     return;
   }
-  if (this.frame % cfg.period !== 0) return;
-  if (this.face === 0) this._center.copy(camera.position);
-  this.captureFace(r, scene, camera, this.face);
-  this.face = (this.face + 1) % 6;
-  if (this.face === 0) {                             // a full cube is fresh: prefilter it for the standard materials
-    this.envRT = this.pmrem.fromCubemap(this.blurCube(r).texture, this.envRT);
-    scene.environment = this.envRT.texture;
-    P.x = 1; P.z = 1; this._ready = true;
+  if (this._pendingFilter) {
+    // Never combine the last scene capture with six blur draws plus PMREM.
+    if (!busy || this.frame - this._pendingFrame > 18) this.publish(r, scene);
+    return;
   }
+  if (!this._cycle && !this.needsRefresh(camera, env, now)) { this.stats.skipped++; return; }
+  const period = cfg.period * scale;
+  if (this.frame % period !== 0) return;
+  // Bound deferral: a busy streaming corridor still refreshes within a few frames.
+  if (busy && (this._deferred = (this._deferred || 0) + 1) < 3) { this.stats.skipped++; return; }
+  this._deferred = 0;
+  if (!this._cycle) { this._center.copy(camera.position); this._cycle = true; }
+  this.captureFace(r, scene, camera, this.face); this.stats.faces++;
+  this.face = (this.face + 1) % 6;
+  if (this.face === 0) { this._pendingFilter = true; this._pendingFrame = this.frame; }
 };
 
 /* the prefiltered environment is built from a 32^2 box-filtered copy of the probe (mip 2): the standard materials' mirror-like wet surfaces,
@@ -178,7 +219,7 @@ TL.Render.captureSky = function (r, camera) {
 };
 
 TL.Render.captureFace = function (r, scene, camera, f) {
-  const g = TL.game, env = g.env, rt = this.probe, tex = rt.texture, cc = this.cc;
+  const g = TL.game, env = g.env, rt = this.captureProbe || this.probe, tex = rt.texture, cc = this.cc;
   const prevTarget = r.getRenderTarget(), prevTM = r.toneMapping, prevAuto = r.autoClear, prevShadowAuto = r.shadowMap.autoUpdate, prevShadowDirty = r.shadowMap.needsUpdate;
   const sky = env.sky, sm = sky.material, smBlend = sm.blending, smT = sm.transparent;
   const savedPos = sky.position.clone(), savedScale = sky.scale.x;
@@ -193,7 +234,9 @@ TL.Render.captureFace = function (r, scene, camera, f) {
   // sky pixels get alpha 0 (colour untouched) so shaders can tell sky from geometry
   sm.blending = THREE.CustomBlending; sm.blendEquation = THREE.AddEquation; sm.blendSrc = THREE.OneFactor; sm.blendDst = THREE.ZeroFactor;
   sm.blendEquationAlpha = THREE.AddEquation; sm.blendSrcAlpha = THREE.ZeroFactor; sm.blendDstAlpha = THREE.ZeroFactor;
-  sky.position.copy(this._center);
+  // the dome (r 1500 x the main pass's scale) must sit inside the probe's short far plane, or it is clipped and the probe's
+  // sky is the black clear colour: every upward-facing standard material then lights from a black sky (dark roofs / streets)
+  sky.position.copy(this._center); sky.scale.setScalar((far * 0.9) / 1500);
   const stars = env.skyU.uStars.value; env.skyU.uStars.value = 0;
   const gm = tex.generateMipmaps; tex.generateMipmaps = f === 5;
   try {
@@ -202,7 +245,7 @@ TL.Render.captureFace = function (r, scene, camera, f) {
   } finally {
     tex.generateMipmaps = gm; env.skyU.uStars.value = stars; TL.ComicLin.value = 0;
     sm.blending = smBlend; sm.transparent = smT; sky.position.copy(savedPos); sky.scale.setScalar(savedScale);
-    this.unhide(); this.U.tlProbe.value = tex;
+    this.unhide(); this.U.tlProbe.value = this.probe.texture;
     r.toneMapping = prevTM; r.autoClear = prevAuto; r.shadowMap.autoUpdate = prevShadowAuto; r.shadowMap.needsUpdate = prevShadowDirty;
     r.setRenderTarget(prevTarget);
   }

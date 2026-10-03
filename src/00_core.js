@@ -97,6 +97,7 @@ TL.defaultSettings = () => ({
   subtitles: true, subSize: 1.0, subBg: 0.6, speakerLabels: true,
   highContrast: false, outlines: false, uiScale: 1.0, centerDot: true, reducedMotion: false, reducedFlashes: false,
   vol: { master: 0.8, music: 0.5, sfx: 0.8, ambience: 0.7, ui: 0.6 }, mono: false,
+  musicTrack: true,         // play the embedded music/*.mp3 playlist (14b_music.js) instead of the procedural score
   showFps: true, debugPhysics: false, debugPerf: false,
   bindings: null,           // filled by Input with defaults
   padBindings: null,

@@ -151,6 +151,10 @@ if (TL.ScanHooks) TL.ScanHooks.build.push((world) => {
         scene.onBeforeRender = function (renderer, sc, camera, rt) {
           prev.call(this, renderer, sc, camera, rt);
           if (!U.size) return;
+          // Reflection captures use a static-scenery layer: skip the entire dynamic
+          // batch pass when none of its traffic/crowd meshes can be rendered.
+          let any = false; for (const b of U) if (b.mesh.layers.test(camera.layers)) { any = true; break; }
+          if (!any) return;
           _PV.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); _F.setFromProjectionMatrix(_PV);
           let S = null;
           const sun = TL.game && TL.game.env && TL.game.env.sun;
@@ -158,7 +162,7 @@ if (TL.ScanHooks) TL.ScanHooks.build.push((world) => {
             sun.updateMatrixWorld(); sun.target.updateMatrixWorld();
             sun.shadow.updateMatrices(sun); S = _S.copy(sun.shadow.getFrustum());
           }
-          for (const b of U) b.cull(_F, S);
+          for (const b of U) if (b.mesh.layers.test(camera.layers)) b.cull(_F, S);
         };
       }
       U.add(b);

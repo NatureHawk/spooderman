@@ -1,0 +1,80 @@
+[
+  {
+    "mode": "crawl",
+    "mechanical": false,
+    "state": "wallcrawl",
+    "swingWall": false,
+    "wallGait": {
+      "run": false,
+      "moving": 1,
+      "phase": 6.13333333333332,
+      "mechanical": 0
+    },
+    "errors": []
+  },
+  {
+    "mode": "crawl",
+    "mechanical": true,
+    "state": "wallcrawl",
+    "swingWall": false,
+    "wallGait": {
+      "run": false,
+      "moving": 1,
+      "phase": 12.266666666666618,
+      "mechanical": 1
+    },
+    "errors": []
+  },
+  {
+    "mode": "run",
+    "mechanical": false,
+    "state": "wallrun",
+    "swingWall": false,
+    "wallGait": {
+      "run": true,
+      "moving": 1,
+      "phase": 26.9333333333333,
+      "mechanical": 0
+    },
+    "errors": []
+  },
+  {
+    "mode": "run",
+    "mechanical": true,
+    "state": "wallrun",
+    "swingWall": false,
+    "wallGait": {
+      "run": true,
+      "moving": 1,
+      "phase": 41.5999999999998,
+      "mechanical": 1
+    },
+    "errors": []
+  },
+  {
+    "mode": "web",
+    "mechanical": false,
+    "state": "swing",
+    "swingWall": true,
+    "wallGait": {
+      "run": true,
+      "moving": 1,
+      "phase": 56.266666666666204,
+      "mechanical": 0
+    },
+    "errors": []
+  },
+  {
+    "mode": "web",
+    "mechanical": true,
+    "state": "swing",
+    "swingWall": true,
+    "wallGait": {
+      "run": true,
+      "moving": 1,
+      "phase": 70.93333333333287,
+      "mechanical": 1
+    },
+    "errors": []
+  }
+]

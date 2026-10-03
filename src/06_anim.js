@@ -151,13 +151,14 @@ TL.TensionArms = class {
   update(dt, root, rootQ, heroState, extra) {
     this.t += dt;
     const hero = extra && extra.hero, speed = hero ? hero.vel.length() : 0;
+    const contactNormal=hero&&hero.state===TL.TS.CEIL?new THREE.Vector3(0,-1,0):hero?hero.wallN:null;
     const resting = this.mode === 'idle' && (heroState === TL.TS.GROUND || heroState === TL.TS.PERCH) && speed < 0.25;
     this.idleTime = resting ? this.idleTime + dt : 0;
     this.fold = TL.damp(this.fold, this.idleTime >= 2 ? 1 : 0, this.idleTime >= 2 ? 4 : 9, dt);
     // Retract the telescoping links for aerial rotations; deploy fully for contact.
     const compactTarget=this.mode==='packed'?1:this.mode==='swing'?.45:this.mode==='idle'?this.fold:0;
     this.compact=TL.damp(this.compact||0,compactTarget,12,dt);
-    this.wallClock += dt * TL.clamp(speed * 1.4, 0, 7);
+    this.wallClock += dt * TL.clamp(speed * 2.2, 0, 22);
     const chestQ = this.rig.Qm.chest, chestP = this.rig.P.chest, chestRest = this.rig.rest.chest.head;
     this.deployment=TL.clamp(this.deployment+(this.retracted?-1:1)*dt/.48,0,1);
     const unfold=TL.smooth(0,1,this.deployment);
@@ -191,15 +192,16 @@ TL.TensionArms = class {
         case 'glide': local = new THREE.Vector3(s * 1.0, 0.1 * u, -0.25); break;
         case 'lattice': local = new THREE.Vector3(s * (0.55 - 0.25 * u), 0.9 + 0.45 * u, 0.75); break;
         case 'strike': local = null; break;
-        case 'wall': local = new THREE.Vector3(s * 0.7, u ? 0.6 : -0.6, 0.8); break;
+        case 'ceiling': case 'wall': local = new THREE.Vector3(s * 0.7, u ? 0.6 : -0.6, 0.8); break;
         default: local = new THREE.Vector3(s * TL.lerp(.36,.08,this.fold), TL.lerp(u ? -.12 : -.3, u ? -.25 : -.18,this.fold), TL.lerp(-.3,-.16,this.fold));
       }
       if (local) a.target.copy(base).add(local.multiplyScalar(1.05).applyQuaternion(rootQ));
       else if (this.focus) a.target.copy(this.focus).add(new THREE.Vector3(Math.sin(i * 1.7) * 0.4, Math.cos(i * 2.3) * 0.4, 0));
       a.planted = false;
-      if (this.mode === 'wall' && hero && !this.retracted && this.deployment===1) {
-        const normal = hero.wallN;
+      if ((this.mode === 'wall'||this.mode==='ceiling') && hero && !this.retracted && this.deployment===1) {
+        const normal = contactNormal;
         const maxReach = (L1 + L2) * .97;
+        const stepDuration=TL.clamp(.16/(1+speed*.18),.028,.16);
         // Contact points remain in world space while the chest climbs past them.
         // One claw at a time reaches ahead, leaving the other three supporting the body.
         const slot = [0,3,1,2][Math.floor(this.wallClock) % 4];
@@ -209,7 +211,7 @@ TL.TensionArms = class {
         if ((!a.contact || nextStep) && !a.step) {
           const reach = maxReach * .46;
           const probe = base.clone().add(new THREE.Vector3(s*reach, u ? reach*.7 : -reach*.55, 0).applyQuaternion(rootQ));
-          probe.addScaledVector(hero.vel, Math.min(.15, .25 / Math.max(speed,1)));
+          probe.addScaledVector(hero.vel, Math.min(.15, .46 / Math.max(speed,1)));
           probe.addScaledVector(normal, .25);
           const hit = hero.world.raycast(probe.x,probe.y,probe.z,-normal.x,-normal.y,-normal.z,maxReach+.6,c=>c.solid && c.climb,null,{noGround:true});
           if (hit) {
@@ -220,8 +222,9 @@ TL.TensionArms = class {
             }
           }
         }
+        if(a.step&&base.distanceTo(a.step.to)>maxReach){a.step=null;a.contact=null;}
         if (a.step) {
-          a.step.t += dt; const t = TL.clamp(a.step.t / .16,0,1);
+          a.step.t += dt; const t = TL.clamp(a.step.t / stepDuration,0,1);
           a.target.copy(a.step.from).lerp(a.step.to,TL.smooth(0,1,t)).addScaledVector(normal,Math.sin(t*Math.PI)*.12);
           a.tip.copy(a.target);
           if (t >= 1) { a.contact = a.step.to.clone(); a.step = null; }
@@ -236,7 +239,7 @@ TL.TensionArms = class {
       const pole = (folded ? new THREE.Vector3(s * TL.lerp(.25,.04,this.fold), -1, -.3) : this.mode === 'swing' ? new THREE.Vector3(s*.08,-1,-.35) : new THREE.Vector3(s * .65, u ? .5 : -.5, -.5)).applyQuaternion(rootQ).normalize();
       // Wall targets refer to the claw tip, not the wrist: keep the blade out of the wall.
       const solveTip = a.tip.clone();
-      if (this.mode === 'wall' && hero && (a.planted || a.step)) solveTip.addScaledVector(hero.wallN,clawLength);
+      if ((this.mode === 'wall'||this.mode==='ceiling') && hero && (a.planted || a.step)) solveTip.addScaledVector(contactNormal,clawLength);
       this.rig.ik2(base, solveTip, L1, L2, pole, this._d1, this._d2);
       // bend-plane normal (same convention as the modelled rest chain); straight arm -> fall back to the pole plane
       const n = this._n.crossVectors(this._d1, this._d2);
@@ -251,8 +254,8 @@ TL.TensionArms = class {
       a.world = wrist.clone();
       if (a.claw) {
         a.claw.position.copy(wrist);
-        if (this.mode === 'wall' && hero && (a.planted || a.step)) {
-          const d = hero.wallN.clone().negate(), cn = pole.clone().cross(d).normalize();
+        if ((this.mode === 'wall'||this.mode==='ceiling') && hero && (a.planted || a.step)) {
+          const d = contactNormal.clone().negate(), cn = pole.clone().cross(d).normalize();
           if (cn.lengthSq() < .001) cn.set(1,0,0);
           this._orient(a.claw.quaternion,cn,d); a.world.addScaledVector(d,clawLength);
         } else if (folded || this.mode === 'swing') {
@@ -362,7 +365,7 @@ TL.HeroAnimator = class {
   startWebShot(rope) {
     // Dedicated wrist reach survives independently of combat actions. Mirror by the fired hand,
     // not by the anchor side, so a cross-body fallback never changes the shooting arm.
-    this.webShot = { hand: rope.hand, target: rope.anchor.clone(), t: 0, dur: 0.32 };
+    this.webShot = { hand: rope.hand, target: rope.anchor.clone(), t: 0, dur: Math.max(.32,rope.shotDur||0) };
     this.rel = null; this.trick = null;
   }
   /* hero: HeroController; pos: interpolated render position; dt: frame time */
@@ -376,7 +379,10 @@ TL.HeroAnimator = class {
     this.aerialFlow.begin(this,hero,dt);
     if(st===S.SWING)this.swingStyle=TL.SwingStyle.sample(this,hero,dt);
     const hs = Math.hypot(V.x, V.z), speed = V.length();
-    const onPole=(st===S.WALL||st===S.CRAWL)&&TL.isClimbPole(hero.wallCol);
+    const swingWall=st===S.SWING&&!!hero.swingWall&&hero.tether.main.attached;
+    const onWall=st===S.WALL||st===S.CRAWL||swingWall;
+    const onSurface=onWall||st===S.CEIL;
+    const onPole=onWall&&TL.isClimbPole(hero.wallCol);
     const surfaceSpeed=onPole?Math.hypot(V.y,V.x*-hero.wallN.z+V.z*hero.wallN.x):speed;
     this.poleGrip=TL.damp(this.poleGrip||0,onPole?1-TL.smooth(.15,1.5,surfaceSpeed):0,10,dt);
     const heavy = this.name === 'WEAVER';
@@ -467,7 +473,7 @@ TL.HeroAnimator = class {
     const spdK = TL.clamp(speed / 30, 0, 1), eK = 0.35 + 0.65 * spdK;
     const desc = TL.smooth(0.05, 0.55, -this.arc), rise = TL.smooth(0.05, 0.55, this.arc), bot = Math.max(0, 1 - desc - rise);
     const tenK = r.attached ? TL.clamp((r.tension / TL.C.G - 1) / 2.5, 0, 1) : 0;
-    if (ropeDirW) {
+    if (ropeDirW && !swingWall) {
       // swing: body hangs along the rope (up vector toward the anchor), facing the travel direction
       const up = ropeDirW.clone();
       let fwd = V.clone(); fwd.addScaledVector(up, -fwd.dot(up));
@@ -489,19 +495,21 @@ TL.HeroAnimator = class {
       const dz=target.z-bodyPos.z,dx=target.x-bodyPos.x;
       const zipYaw=zipPose.braced?Math.atan2(hero.launch.heading.x,hero.launch.heading.z):Math.hypot(dx,dz)>.1?Math.atan2(dx,dz):yaw;
       this.rootQT.setFromEuler(this._e.set(zipPose.pitch,zipYaw,0,'YXZ'));
-    } else if (st === S.WALL || st === S.CRAWL) {
+    } else if (onWall) {
       // feet on the wall: body up = wall-run direction, facing into the wall... keep body parallel to wall
       const n = hero.wallN;
-      const upW = !onPole && hero.wallMode === 'side' && st === S.WALL ? new THREE.Vector3(-n.z, 0, n.x).multiplyScalar(Math.sign(V.x * -n.z + V.z * n.x) || 1) : new THREE.Vector3(0, 1, 0);
+      const running=!onPole&&(st===S.WALL||swingWall);
+      const tangent=V.clone().addScaledVector(n,-V.dot(n));
+      const upW=running&&tangent.lengthSq()>.2?tangent.normalize():new THREE.Vector3(0,1,0);
       const fwd = new THREE.Vector3(-n.x, 0, -n.z);                       // chest faces the wall
       let upv = upW.clone(); upv.addScaledVector(fwd, -upv.dot(fwd)).normalize();
-      if (!onPole && st === S.WALL && hero.wallMode === 'side') { upv = new THREE.Vector3(0, 1, 0).lerp(upW, 0.35).normalize(); }
+
       const left = new THREE.Vector3().crossVectors(upv, fwd).normalize();
       this.rootQT.setFromRotationMatrix(new THREE.Matrix4().makeBasis(left, upv, fwd));
       if(onPole)this.rootQT.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),-.95*this.poleGrip));
     } else if (st === S.CEIL) {
-      const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-      const upv = new THREE.Vector3(0, -1, 0);
+      const fwd=new THREE.Vector3(0,1,0);
+      const upv=new THREE.Vector3(V.x,0,V.z);if(upv.lengthSq()<.1)upv.set(Math.sin(yaw),0,Math.cos(yaw));upv.normalize();
       const left = new THREE.Vector3().crossVectors(upv, fwd).normalize();
       this.rootQT.setFromRotationMatrix(new THREE.Matrix4().makeBasis(left, upv, fwd));
     }
@@ -521,7 +529,7 @@ TL.HeroAnimator = class {
       }
       this.rootQT.multiply(aerial.root);
     }
-    if (motion.weight > .01 && !this.trick && st !== S.RECOVER && st !== S.WALL && st !== S.CRAWL && st !== S.CEIL) {
+    if (motion.weight > .01 && !this.trick && !onWall && st !== S.RECOVER && st !== S.CEIL) {
       const m = motion.root;
       this.rootQT.multiply(new THREE.Quaternion().setFromEuler(this._e.set(m.pitch*motion.weight,m.twist*motion.weight,m.roll*motion.weight+(motion.turn || 0),'XYZ')));
     }
@@ -534,13 +542,22 @@ TL.HeroAnimator = class {
       const target=new THREE.Quaternion().setFromEuler(this._e.set(referencePose.pitch,yaw,referencePose.roll,'YXZ'));
       this.rootQT.slerp(target,referencePose.weight);this.rel=null;this.trick=null;
     }
-    const rk = referencePose?32:st === S.SWING ? TL.lerp(5, 10, catchK) : st === S.VAULT ? 20 : this.trick || relSpin || rollO || zipPose&&zipPose.handspring ? 30 : st === S.RECOVER ? 14 : 12;
+    const rk = onWall?18:referencePose?32:st === S.SWING ? TL.lerp(5, 10, catchK) : st === S.VAULT ? 20 : this.trick || relSpin || rollO || zipPose&&zipPose.handspring ? 30 : st === S.RECOVER ? 14 : 12;
+    // Smooth the flight attitude separately from the unwrapped tube roll.
+    // Slerping whole revolutions takes the shortest quaternion path and can
+    // erase the spin; apply the distance-driven local-Y rotation afterward.
+    const priorSpin=this.passageSpin||0,spinAxis=new THREE.Vector3(0,1,0);
+    if(priorSpin)this.rootQ.multiply(new THREE.Quaternion().setFromAxisAngle(spinAxis,-priorSpin));
     this.rootQ.slerp(this.rootQT, 1 - Math.exp(-rk * dt));
+    this.passageSpin=referencePose?.spin??TL.damp(priorSpin,Math.round(priorSpin/(Math.PI*2))*Math.PI*2,12,dt);
+    if(Math.abs(this.passageSpin%(Math.PI*2))<.0001)this.passageSpin=0;
+    if(this.passageSpin)this.rootQ.multiply(new THREE.Quaternion().setFromAxisAngle(spinAxis,this.passageSpin));
     // pivot: rotate about the body center while airborne / rolling, about the feet when standing
-    const pivT = rollO ? 0.5 : st === S.RECOVER ? (CA ? 0 : 0.55) : st === S.VAULT ? TL.C.FEET * 0.95 : airborne(st) && !hero.grounded ? TL.C.FEET : 0;
+    const pivT = onSurface ? TL.C.FEET : rollO ? 0.5 : st === S.RECOVER ? (CA ? 0 : 0.55) : st === S.VAULT ? TL.C.FEET * 0.95 : airborne(st) && !hero.grounded ? TL.C.FEET : 0;
     this.pivotH = TL.damp(this.pivotH, pivT, 10, dt);
     const pv = this._d.set(0, this.pivotH, 0);
     this.meshPos.copy(pos).add(pv).sub(pv.clone().applyQuaternion(this.rootQ));
+    if(st===S.CEIL)this.meshPos.y+=TL.lerp(-.18,.28,TL.smooth(.9,.999,new THREE.Vector3(0,0,1).applyQuaternion(this.rootQ).y));
     if(this.rel&&this.rel.entryOffset)this.meshPos.addScaledVector(this.rel.entryOffset,1-TL.smooth(0,.18,this.rel.t));
     // ----- limb poses (model space directions)
     const moved = this._v.copy(pos).sub(this.lastPos); moved.y = 0;
@@ -701,7 +718,7 @@ TL.HeroAnimator = class {
           [wSpread, both((s) => limbs(s, D(0.16 * s, -1, -0.12), D(0.04 * s, s>0?-.32:-.45, -1), D(0, -.65, -.35),
             D(1 * s, 0.3 + 0.12 * (s > 0 ? fl : fl2), -0.05), D(0.55 * s, 0.75, 0.15 + 0.1 * fl)))],
           [wLand, both((s) => limbs(s, D(0.14 * s, -1, 0.3), D(0.06 * s, -1, -.7), D(0, -0.4, 1), D(0.9 * s, -0.1, 0.3), D(0.5 * s, 0.1, 0.8)))],
-          [F, both((s) => limbs(s, D(0.05 * s, -1, -0.06), st===S.DIVE?D(0.03*s,-1,s>0?-.42:-.48):D(0.04*s,s>0?-.38:-.5,-1), D(0, -.8, -.25), D(0.32 * s, -1, -0.3), D(0.18 * s, -1, -0.12)))],
+          [F, both((s) => limbs(s, D(0.05 * s, -1, -0.06), st===S.DIVE?D(0.025*s,-1,s>0?-.2:-.26):D(0.04*s,s>0?-.38:-.5,-1), D(0, -.8, -.25), D(0.32 * s, -1, -0.3), D(0.18 * s, -1, -0.12)))],
         ]);
         for (const n of ['uarmL', 'uarmR', 'farmL', 'farmR', 'thighL', 'thighR', 'shinL', 'shinR']) if (sets[n]) sets[n] = flut(sets[n], n.length * 1.7 + (n.endsWith('L') ? 0 : 3));
         spineLean = wRise * 0.05 + wSpread * -0.05 + wLand * 0.15 + F * -0.14;
@@ -846,7 +863,7 @@ TL.HeroAnimator = class {
             [e * rise, limbs(fs, null, null, null, D(0.55 * fs, 0.35, 0.6), D(0.3 * fs, 0.75, 0.55))],
           ]);
           for (const n of ['uarm' + F, 'farm' + F]) sets[n] = flut(sets[n], fs * 5);
-          const grip = hero.singleHandSwing ? 0 : bot * tenK * spdK * 0.8;
+          const grip = hero.singleHandSwing || swingWall ? 0 : bot * tenK * spdK * 0.8;
           if (grip > 0.05 && r.active) {
             const sm = shoulderOf(ropeHand), dirM = toModel(r.pivot()).sub(sm).normalize();
             const gp = sm.addScaledVector(dirM, reach * 0.9 - 0.24);
@@ -934,7 +951,7 @@ TL.HeroAnimator = class {
       }
     }
     // Authored accents blend over locomotion; rope-hand IK and combat keep priority.
-    if (motion.weight > .01) {
+    if (motion.weight > .01 && !onSurface) {
       for (const n in motion.out) {
         const isArm = n.startsWith('uarm') || n.startsWith('farm');
         if (isArm && (iks.some(k => n.endsWith(k.hand)) || ((st === S.WALL || st === S.CRAWL) && !this.arms))) continue;
@@ -951,6 +968,11 @@ TL.HeroAnimator = class {
       spineLean=TL.lerp(spineLean,.04,w);spineTwist=TL.lerp(spineTwist,-.1,w);
       rig.hipsOffT.lerp(new THREE.Vector3(0,-.06,-.04),w);
     }
+    // Surface gait owns the final locomotion pose; loaded rope hands retain their IK.
+    if(onSurface&&!onPole&&TL.WallMotion){
+      const wallPose=TL.WallMotion.pose(this,hero,dt,put,D,iks);
+      spineLean=wallPose.lean;spineTwist=wallPose.twist;
+    } else this.wallContacts=null;
     // combat action overrides (upper body / kicks)
     if (this.action) {
       const A = this.action; A.t += dt;
@@ -982,16 +1004,20 @@ TL.HeroAnimator = class {
       const shot = this.webShot; shot.t += dt;
       const u = TL.clamp(shot.t / shot.dur, 0, 1), sg = shot.hand === 'L' ? 1 : -1;
       const loaded = r.active && r.hand === shot.hand;
-      const reach = TL.smooth(0, 0.22, u);
+      const reach = TL.smooth(0, 0.12, u);
       const settle = 1 - TL.smooth(0.55, 1, u);
       if (!iks.some((k) => k.hand === shot.hand)) {
         iks.push({ hand: shot.hand, t: toModel(loaded ? r.anchor : shot.target),
           reach: TL.lerp(0.72, 0.98, reach), pole: D(sg, -0.35, -0.3),
           w: reach * (loaded ? 1 : settle), stiff: 28 });
-        clavUp[shot.hand] = 0.25 * reach;
+        clavUp[shot.hand] = (.25+.18*(1-TL.smooth(.1,.5,u))) * reach;
       }
       spineTwist += -sg * 0.16 * Math.sin(u * Math.PI);
       if (u >= 1) this.webShot = null;
+    }
+    if(TL.TraversalExpression){
+      const expression=TL.TraversalExpression.update(this,hero,dt,iks,toModel,D,onSurface);
+      spineTwist+=expression.twist;spineLean+=expression.loadLean;rig.hipsOffT.x+=expression.shift;rig.hipsOffT.y-=expression.loadDrop;
     }
     // arm IK (rope hands, shooting wrist). Uses last frame's shoulder joints: they barely move frame to frame,
     // and solving before the single apply() means the rope arm is never pulled back toward a canned pose.
@@ -1053,6 +1079,8 @@ TL.HeroAnimator = class {
     this.rig.mesh.position.copy(this.meshPos);
     this.rig.mesh.quaternion.copy(this.rootQ);
     rig.apply(dt);
+    if(onSurface&&!onPole&&!hero.corner&&!this.action&&TL.WallMotion)TL.WallMotion.plant(this,hero,dt,iks);
+    if(TL.TraversalExpression)TL.TraversalExpression.plant(this);
     if(referencePose&&TL.ReferenceMotion.grip)TL.ReferenceMotion.grip(this,hero,referencePose);
     if (CA && plants.length) CA.plant(this, plants, this.meshPos, this.rootQ);
     if (CA && vo && hero.action) CA.clearLimbs(this, hero.action.plan, this.meshPos, this.rootQ, hero.action.u);
@@ -1141,7 +1169,7 @@ TL.HeroAnimator = class {
     // WEAVER arms + membranes
     const mp = this.meshPos;
     if (this.arms) {
-      this.arms.mode = (st === S.WALL || st === S.CRAWL) ? 'wall' : st===S.PERCH?'packed':this.armsMode || (referencePose?'packed':st === S.GLIDE ? 'glide' : (this.rel||this.trick||zipPose||st===S.SLING||st===S.VAULT||rollO)?'packed' : airborne(st) ? 'swing' : 'idle');
+      this.arms.mode = st===S.CEIL?'ceiling':onWall ? 'wall' : st===S.PERCH?'packed':this.armsMode || (referencePose?'packed':st === S.GLIDE ? 'glide' : (this.rel||this.trick||zipPose||st===S.SLING||st===S.VAULT||rollO)?'packed' : airborne(st) ? 'swing' : 'idle');
       this.arms.update(dt, mp, this.rootQ, st, {hero});
     }
     const P = rig.P, tw = (n) => P[n].clone().applyQuaternion(this.rootQ).add(mp);

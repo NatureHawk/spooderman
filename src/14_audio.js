@@ -11,10 +11,38 @@
    ===================================================================================== */
 'use strict';
 
+/* Read-only traversal sound descriptors. Material tags win over geometry fallback;
+   the scan map can supply its actual chosen facade material by building id. */
+TL.TraversalSound={
+  surface(game,h,surf){
+    const wall=surf==='wall'||h.swingWall||h.state===TL.TS.WALL||h.state===TL.TS.CRAWL||h.state===TL.TS.CEIL;
+    const c=wall?(h.state===TL.TS.CEIL?h.ceilCol:h.wallCol):h.groundCol;
+    if(!c)return 'concrete';
+    const label=String(c.surface||c.materialType||c.roofObstacle||c.tag||c.kind||'').toLowerCase();
+    if(/glass|window/.test(label))return 'glass';
+    if(/metal|rail|pipe|duct|hvac|crane|cable|vehicle|vent|grate/.test(label))return 'metal';
+    if(/brick/.test(label))return 'brick';
+    if(/grass|soil|park/.test(label))return 'soft';
+    if(wall&&c.bid!==undefined){const m=TL.Buildings?.surfaceByBuilding?.get(c.bid);if(m)return m==='brick'?'brick':m==='glass'?'glass':'concrete';}
+    return 'concrete';
+  },
+  mix(h,feedback,paused,windLevel){
+    const sp=h.vel.length(),flow=TL.clamp(feedback?feedback.energy:(sp-7)/55,0,1),k=paused?0:1;
+    const wind=TL.clamp(windLevel??.7,0,1)*k,near=TL.clamp(feedback?.near||0,0,1);
+    const r=h.tether.main,load=r.attached?TL.clamp((r.tension/TL.C.G-.8)/3,0,1):0;
+    const loadRise=r.attached?TL.clamp(feedback?.loadRate||0,0,2):0;
+    return{wind:(.006*TL.clamp(sp/6,0,1)+flow*.22+Math.max(0,feedback?.accel||0)*.025)*wind,
+      air:near*flow*flow*.075*wind,pan:TL.clamp(feedback?.nearPan||0,-1,1),
+      strain:load*(.055+loadRise*.012)*k,load,pitch:TL.clamp(32/Math.max(8,r.L||32),.65,1.5),
+      scrape:(h.swingWall||h.state===TL.TS.WALL?TL.clamp(sp/35,0,1)*.018:0)*k};
+  }
+};
+
 TL.AudioManager = class {
   constructor(game) {
     this.game = game; this.ctx = null; this.ok = false; this.combat = 0; this.t = 0; this.sirenLevel = 0; this.trafficLevel = 0;
     this.prevVy = 0; this.swooshCD = 0; this.lastAnim = null; this.lastSteps = 0; this.arpT = 0; this.arpI = 0;
+    this.stepCD=0;
   }
   init() {
     if (this.ctx) return;
@@ -24,7 +52,7 @@ TL.AudioManager = class {
       // master bus: gentle glue compression keeps layered hits loud without clipping
       this.comp = c.createDynamicsCompressor();
       this.comp.threshold.value = -16; this.comp.knee.value = 12; this.comp.ratio.value = 4; this.comp.attack.value = 0.004; this.comp.release.value = 0.22;
-      this.master = c.createGain(); this.master.connect(this.comp); this.comp.connect(c.destination);
+      this.master = c.createGain(); this.master.gain.value=0;this.master.connect(this.comp); this.comp.connect(c.destination);
       this.ch = {};
       for (const k of ['music', 'sfx', 'ambience', 'ui']) { const g = c.createGain(); g.connect(this.master); this.ch[k] = g; }
       // city reverb (post-fader sends from sfx / music; one-shots can add their own send)
@@ -39,6 +67,8 @@ TL.AudioManager = class {
       // wind loop
       this.wind = this.loopNoise(this.noise, 'bandpass', 600, 0.7, 'ambience');
       this.windHi = this.loopNoise(this.noise, 'highpass', 3000, 0.2, 'ambience');
+      this.surfaceAir=this.loopNoise(this.pink,'bandpass',900,.8,'ambience',true);
+      this.surfaceScuff=this.loopNoise(this.pink,'bandpass',1800,1.2,'sfx');
       // suit flutter: low band of noise, amplitude-modulated faster as speed rises
       this.flap = this.loopNoise(this.pink, 'bandpass', 220, 0.9, 'ambience');
       this.flapLfo = this.lfo('triangle', 8, this.flap.g.gain);
@@ -68,7 +98,7 @@ TL.AudioManager = class {
     } catch (e) { TL.logError(e, 'audio'); }
   }
   resume() { if (this.ctx && this.ctx.state === 'suspended') return this.ctx.resume(); return Promise.resolve(); }
-  duck(on) { if (!this.ok) return; this.ch.sfx.gain.setTargetAtTime(on ? 0.2 : this.vol('sfx'), this.ctx.currentTime, 0.1); this.ch.ambience.gain.setTargetAtTime(on ? 0.15 : this.vol('ambience'), this.ctx.currentTime, 0.1); }
+  duck(on) { if (!this.ok) return; this.ch.sfx.gain.setTargetAtTime(this.vol('sfx')*(on?.2:1), this.ctx.currentTime, 0.1); this.ch.ambience.gain.setTargetAtTime(this.vol('ambience')*(on?.15:1), this.ctx.currentTime, 0.1); }
   vol(k) { const v = this.game.settings.vol; return (v[k] !== undefined ? v[k] : 1); }
   applyVolumes() {
     if (!this.ok) return;
@@ -130,12 +160,13 @@ TL.AudioManager = class {
     return b;
   }
   /* ---------------------------------------------------------------- loops */
-  loopNoise(buf, ftype, freq, q, ch) {
+  loopNoise(buf, ftype, freq, q, ch, spatial) {
     const c = this.ctx, s = c.createBufferSource(); s.buffer = buf; s.loop = true;
     const f = c.createBiquadFilter(); f.type = ftype; f.frequency.value = freq; f.Q.value = q;
     const g = c.createGain(); g.gain.value = 0;
-    s.connect(f); f.connect(g); g.connect(this.ch[ch]); s.start(0, Math.random() * buf.duration);
-    return { s, f, g };
+    const pan=spatial&&c.createStereoPanner?c.createStereoPanner():null;
+    s.connect(f); f.connect(g);if(pan){g.connect(pan);pan.connect(this.ch[ch]);}else g.connect(this.ch[ch]);s.start(0, Math.random() * buf.duration);
+    return { s, f, g, pan };
   }
   loopOsc(types, freqs, ftype, freq, q, ch) {
     const c = this.ctx, f = c.createBiquadFilter(); f.type = ftype; f.frequency.value = freq; f.Q.value = q;
@@ -160,12 +191,18 @@ TL.AudioManager = class {
     const k = paused ? 0 : 1;
     const motion=h.feedback,flow=motion?motion.energy:TL.clamp((sp-7)/55,0,1);
     const windGain=(g.settings.windLevel??.7)*k;
+    const mix=TL.TraversalSound.mix(h,motion,paused,g.settings.windLevel);
     const charge=st===S.SLING&&h.sling?TL.clamp(h.sling.pull/8,0,1):st===S.LAUNCH&&h.launch&&h.launch.arrived?.7:0;
     this.set(this.launchStrain.g.gain,paused?0:charge*.11,.035);
     this.set(this.launchStrain.f.frequency,500+charge*1700,.06);
-    this.set(this.wind.g.gain, (.006*TL.clamp(sp/6,0,1)+flow*.22+Math.max(0,motion?motion.accel:0)*.025)*windGain);
+    this.set(this.wind.g.gain,mix.wind,.12);
     this.set(this.wind.f.frequency, 260 + flow * 1100);
     this.set(this.windHi.g.gain, flow*flow*.065*windGain);
+    this.set(this.surfaceAir.g.gain,mix.air,.12);this.set(this.surfaceAir.f.frequency,650+flow*1200,.16);
+    if(this.surfaceAir.pan)this.set(this.surfaceAir.pan.pan,mix.pan,.12);
+    this.set(this.surfaceScuff.g.gain,mix.scrape,.09);
+    const surface=TL.TraversalSound.surface(g,h,g.hero.anim?.stepSurf);
+    this.set(this.surfaceScuff.f.frequency,surface==='glass'?2500:surface==='metal'?1400:950,.14);
     // suit flutter while airborne: faster and harder in a dive
     const an = g.hero.anim;
     const air = st === S.AIR || st === S.DIVE || st === S.GLIDE || st === S.SWING;
@@ -176,10 +213,10 @@ TL.AudioManager = class {
     this.set(this.flap.f.frequency, 160 + sp * 3, 0.2);
     // rope strain: creak rate and pitch follow the load
     const r = h.tether.main, tn = r.attached ? TL.clamp((r.tension / TL.C.G - 0.8) / 3, 0, 1) : 0;
-    const rb = tn * 0.07 * k;
+    const rb = mix.strain;
     this.set(this.rope.g.gain, rb, 0.04); this.set(this.ropeLfo.depth.gain, rb * 0.8, 0.04);
     this.set(this.ropeLfo.o.frequency, 7 + tn * 20, 0.1);
-    this.set(this.rope.f.frequency, 380 + tn * 900, 0.06);
+    this.set(this.rope.f.frequency, (380 + tn * 900)*mix.pitch, 0.12);
     this.set(this.ropeHum.g.gain, tn * 0.035 * k, 0.06);
     this.set(this.ropeHum.oscs[0].frequency, 55 + tn * 30, 0.1); this.set(this.ropeHum.oscs[1].frequency, (55 + tn * 30) * 1.5, 0.1);
     // swing pass-by: a whoosh as the body sweeps through the bottom of the arc
@@ -187,9 +224,10 @@ TL.AudioManager = class {
     if (!paused && st === S.SWING && this.prevVy < 0 && h.vel.y >= 0 && sp > 12 && this.swooshCD <= 0) { this.sfx('swoosh', sp); this.swooshCD = 0.45; }
     this.prevVy = h.vel.y;
     // footsteps from the animator's foot plants (ground run / wall run)
+    this.stepCD=Math.max(0,this.stepCD-dt);
     if (an) {
       if (an !== this.lastAnim) { this.lastAnim = an; this.lastSteps = an.steps; }
-      if (an.steps !== this.lastSteps) { this.lastSteps = an.steps; if (!paused) this.sfx('step', an.stepSpeed, { surf: an.stepSurf }); }
+      if (an.steps !== this.lastSteps) { this.lastSteps = an.steps; if (!paused&&this.stepCD<=0) {this.stepCD=.085;this.sfx('step', an.stepSpeed, { surf: an.stepSurf,material:surface,wet:g.env?.wet||0,pan:(an.steps%2?-.12:.12) });} }
     }
     const alt = h.pos.y;
     this.set(this.traffic.g.gain, TL.clamp(this.trafficLevel * (1 - alt / 150), 0, 0.35) * k);
@@ -350,8 +388,13 @@ TL.AudioManager = class {
       }
       case 'step': {
         const k = TL.clamp((a || 5) / 12, 0.25, 1), r = rnd(0.15);
-        if (o.surf === 'wall') { noise('bandpass', 2300 * r, 1500, 2, 0.045, 0.12 * k); noise('bandpass', 3000, 2000, 0.8, 0.08, 0.025 * k, { t0: 0.01 }); }
+        if(o.material==='glass'){tone('sine',480*r,340,.045,.05*k);noise('bandpass',3200*r,2100,3,.04,.1*k);noise('highpass',4200,3000,.7,.05,.025*k);}
+        else if(o.material==='metal'){ring(420*r,[1,2.1,3.6],.11,.035*k);noise('bandpass',1900,900,2,.04,.1*k);}
+        else if(o.material==='brick'){noise('bandpass',1100*r,550,1.1,.055,.14*k);noise('highpass',3000,2000,.7,.08,.045*k);tone('sine',140,70,.045,.045*k);}
+        else if(o.material==='soft'){noise('lowpass',1000,260,.8,.085,.1*k,{buf:this.pink});}
+        else if (o.surf === 'wall') { noise('bandpass', 2300 * r, 1500, 2, 0.045, 0.12 * k); noise('bandpass', 3000, 2000, 0.8, 0.08, 0.025 * k, { t0: 0.01 }); }
         else { noise('bandpass', 1400 * r, 700, 1.3, 0.045, 0.16 * k); tone('sine', 120 * r, 60, 0.05, 0.12 * k); noise('highpass', 4200, 4200, 0.7, 0.025, 0.02 * k); }
+        if(o.wet>.15)noise('highpass',2800,1500,.8,.07,.035*k*TL.clamp(o.wet,0,1));
         break;
       }
       case 'land': {

@@ -323,7 +323,10 @@ void main() {
   g *= mix(vec3(1.0), uShadowTint, 1.0 - smoothstep(0.0, 0.5, l)) * mix(vec3(1.0), uHighTint, smoothstep(0.4, 1.0, l));
   g = pow(max(g * uGain + uLift, 0.0), vec3(1.0 / uGamma));
   float l2 = tlLuma(g); g = mix(vec3(l2), g, uSat);
-  g = mix(g, g * g * (3.0 - 2.0 * g), uContrast);                                     // gentle S curve
+  // The scene and bloom retain HDR highlights. The cubic is only monotonic on [0, 1];
+  // evaluating it above white inverts the sun into a blue/black disc.
+  vec3 curveInput = clamp(g, 0.0, 1.0);
+  g = mix(g, curveInput * curveInput * (3.0 - 2.0 * curveInput), uContrast);
   g = mix(g0, g, uGradeMix);
   vec2 q = (vUv - 0.5) * vec2(uAspect, 1.0);
   g *= 1.0 - uVig * smoothstep(0.40, 1.25, length(q) * 1.15);

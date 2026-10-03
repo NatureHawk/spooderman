@@ -421,3 +421,92 @@ TL.Contact = {
     return Math.max(0, maxD);
   },
 };
+
+/* Geometry-backed continuous surface flow. Position still goes through the
+   ordinary capsule integrator. Redirected velocity never exceeds entry speed. */
+TL.SurfaceFlow={
+  clear(h,points){
+    const a=[];let minx=Infinity,minz=Infinity,maxx=-Infinity,maxz=-Infinity;
+    for(const p of points){minx=Math.min(minx,p.x);minz=Math.min(minz,p.z);maxx=Math.max(maxx,p.x);maxz=Math.max(maxz,p.z);}
+    h.world.query(minx-1,minz-1,maxx+1,maxz+1,a);
+    return points.every(p=>!TL.Contact.overlap(h.world,a,p.x,p.y,p.z,h.shape||TL.BodyShapes.stand,.012));
+  },
+  point(C,s,y){
+    if(s<0)return new THREE.Vector3(C.E.x+C.n0.x*C.r+C.n1.x*s,y,C.E.z+C.n0.z*C.r+C.n1.z*s);
+    const angle=Math.min(Math.PI/2,s/C.r),tail=Math.max(0,s-Math.PI*C.r/2);
+    return new THREE.Vector3(C.E.x+(C.n0.x*Math.cos(angle)+C.n1.x*Math.sin(angle))*C.r-C.n0.x*tail,y,
+      C.E.z+(C.n0.z*Math.cos(angle)+C.n1.z*Math.sin(angle))*C.r-C.n0.z*tail);
+  },
+  corner(h,dt,it){
+    const c=h.wallCol,n=h.wallN,P=h.pos,V=h.vel;
+    if(h.corner||h.roofFlow||!c||c.dynamic||!c.climb||TL.isClimbPole(c)||Math.min(c.hx,c.hz)<.6||h.jumpBuffer>0)return false;
+    const wants=it.camFwd&&-n.dot(it.camFwd)>.25||it.move&&-n.dot(it.move)>.3;if(!wants)return false;
+    const local=c.toLocal(P.x,P.y,P.z,new THREE.Vector3()),nx=n.x*c.c-n.z*c.s,nz=n.x*c.s+n.z*c.c;
+    const xFace=Math.abs(nx)>.9,zFace=Math.abs(nz)>.9;if(!xFace&&!zFace)return false;
+    const vx=V.x*c.c-V.z*c.s,vz=V.x*c.s+V.z*c.c,along=xFace?vz:vx,sp=Math.abs(along);
+    if(sp<.8)return false;const sign=Math.sign(along),extent=xFace?c.hz:c.hx,coord=xFace?local.z:local.x;
+    const gap=extent-sign*coord;if(gap<-.08||gap>Math.max(.16,sp*dt+.08))return false;
+    if(P.y<c.cy-c.hy+1||P.y>c.top-.8)return false;
+    const E=c.toWorld(xFace?Math.sign(nx)*c.hx:sign*c.hx,local.y,xFace?sign*c.hz:Math.sign(nz)*c.hz,new THREE.Vector3());
+    const n1=c.dirToWorld(xFace?0:sign,0,xFace?sign:0,new THREE.Vector3());
+    const r=Math.max(TL.C.CAP_R+.004,(P.x-E.x)*n.x+(P.z-E.z)*n.z);
+    if(r>TL.C.CAP_R+.2)return false;
+    const C={flow:true,E,r,n0:n.clone(),n1,sp,s:-Math.max(0,gap),t:0,dur:(Math.max(0,gap)+Math.PI*r/2)/sp,col:c,
+      out:n.clone().negate(),side:sign,entrySpeed:V.length(),a0:Math.atan2(n.x,n.z),da:TL.wrapAngle(Math.atan2(n1.x,n1.z)-Math.atan2(n.x,n.z))};
+    const points=[P.clone()];for(let i=0;i<=12;i++){const s=C.s+(Math.PI*r/2+.45-C.s)*i/12;points.push(this.point(C,s,P.y+V.y*(s-C.s)/sp));}
+    if(!this.clear(h,points))return false;
+    h.corner=C;h.emit('corner',C);return true;
+  },
+  cornerStep(h,dt){
+    const C=h.corner;if(!C?.flow)return false;
+    const next=C.s+C.sp*dt,p=this.point(C,next,h.pos.y),dist=p.distanceTo(h.pos);
+    // Revalidate locally for moving obstacles. A failed transfer simply peels off.
+    if(!this.clear(h,[h.pos,p])){h.corner=null;h.swingWall=false;if(h.state!==TL.TS.SWING)h.fsm.set(TL.TS.AIR,'corner-blocked');return false;}
+    const y=h.vel.y;h.vel.copy(p).sub(h.pos).multiplyScalar(1/dt);h.vel.y=y;
+    const hs=Math.hypot(h.vel.x,h.vel.z);if(hs>C.sp){h.vel.x*=C.sp/hs;h.vel.z*=C.sp/hs;}
+    C.s=next;C.t+=dt;const u=TL.clamp(next/C.r,0,Math.PI/2);
+    h.wallN.copy(C.n0).multiplyScalar(Math.cos(u)).addScaledVector(C.n1,Math.sin(u)).normalize();
+    C.done=next>=Math.PI*C.r/2;return true;
+  },
+  cornerPost(h){
+    const C=h.corner;if(!C?.flow)return;
+    C.sp=Math.min(C.sp,Math.hypot(h.vel.x,h.vel.z));
+    if(!C.done)return;
+    h.wallN.copy(C.n1);h.wallCol=C.col;h.corner=null;
+    // Use the original tangent magnitude; chord integration never creates speed.
+    const sp=Math.min(C.sp,Math.hypot(h.vel.x,h.vel.z));h.vel.x=C.out.x*sp;h.vel.z=C.out.z*sp;
+    h.surfaceTurn={normal:C.n1.clone(),speed:h.vel.length(),t:0};
+  },
+  roof(h,it){
+    if(h.roofFlow||h.corner||h.state!==TL.TS.WALL||h.vel.y<5||!h.wallCol||TL.isClimbPole(h.wallCol))return false;
+    if(h.pos.y<h.wallCol.top-1.35)return false;
+    const plan=TL.Contact.planClimbOver(h,it);if(!plan||plan.perch)return false;
+    h.roofFlow={top:plan.top,normal:h.wallN.clone(),col:h.wallCol,age:0,turn:0,entrySpeed:h.vel.length()};
+    h.emit('roofcarry',h.roofFlow);return true;
+  },
+  roofStep(h,dt){
+    const f=h.roofFlow;if(!f)return false;
+    if(![TL.TS.WALL,TL.TS.AIR,TL.TS.SWING].includes(h.state)||h.jumpBuffer>0||f.age>1.3){h.roofFlow=null;return false;}
+    f.age+=dt;
+    if(h.pos.y<f.top+TL.C.FEET+.035){if(h.vel.y<=1){h.roofFlow=null;return false;}return h.state===TL.TS.WALL;}
+    if(!f.turn){f.turn=1;h.fsm.set(TL.TS.AIR,'wall-crest');h.emit('vault');h._wallLostT=h.simT||0;}
+    const V=h.vel,n=f.normal,into=-V.dot(n),angle=Math.atan2(Math.max(0,V.y),Math.max(0,into));
+    const da=Math.min(angle,dt*10),c=Math.cos(da),s=Math.sin(da),up=V.y;
+    const candidate=V.clone().addScaledVector(n,-(into*c+up*s-into));candidate.y=up*c-into*s;
+    const target=h.pos.clone().addScaledVector(candidate,dt+.06);
+    if(!this.clear(h,[h.pos,target])){h.roofFlow=null;return false;}
+    V.copy(candidate);if(angle<.04||h.state===TL.TS.SWING)h.roofFlow=null;return false;
+  },
+  ceiling(h,it){
+    if(h.jumpBuffer>0||it.dive||h.corner)return false;
+    const contact=h._ceilContact;if(!contact?.col?.climb||contact.col.dynamic||TL.isClimbPole(contact.col))return false;
+    const normal=h.wallN.clone(),speed=Math.max(0,h.preVel.y),V=h.vel;
+    const direction=normal.clone(); // turn out under the supported overhang
+    const ceiling=h.world.raycast(h.pos.x+direction.x*.55,h.pos.y,h.pos.z+direction.z*.55,0,1,0,1.4,c=>c===contact.col,null,{noGround:true});
+    if(!ceiling)return false;
+    const proposed=V.clone().addScaledVector(direction,speed*.85);proposed.y=0;
+    const budget=h.preVel.length();if(proposed.length()>budget)proposed.setLength(budget);
+    if(!this.clear(h,[h.pos,h.pos.clone().addScaledVector(proposed,.08)]))return false;
+    V.copy(proposed);h.ceilCol=contact.col;h.ceilCarry=.7;h.fsm.set(TL.TS.CEIL,'wall-to-ceiling');h.emit('surfacehandoff','ceiling');return true;
+  }
+};

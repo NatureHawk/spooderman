@@ -1,0 +1,36 @@
+'use strict';
+const {launch,start,setScene}=require('./graphics_bench/lib');
+const fs=require('fs'),path=require('path'),assert=require('assert');
+(async()=>{const {browser,page}=await launch({headless:true,w:1280,h:720});const out=path.join(__dirname,'../evidence/upgrade');fs.mkdirSync(out,{recursive:true});try{
+  await start(page,path.join(__dirname,'../THREADLINE.html'),'low');
+  await setScene(page,'roof',{settle:1});
+  await page.evaluate(()=>{const g=TL.game;g.ui.showHUD();document.getElementById('modals').style.display='';g.cityLife.incidentT=Infinity;g.ui.openCityLink();BENCH.render();});
+  assert.equal(await page.evaluate(()=>document.querySelectorAll('.modal .row button').length>=3),true);
+  const rows=await page.evaluate(()=>[...document.querySelectorAll('.modal .row')].filter(r=>r.textContent.includes('Respond')).map(r=>r.textContent));
+  assert.equal(rows.length,3);assert(rows.some(r=>r.includes('courier'))&&rows.some(r=>r.includes('Runaway'))&&rows.some(r=>r.includes('rescue')));
+  await page.screenshot({path:path.join(out,'citylink.png')});
+  await page.setViewport({width:860,height:640});
+  await page.evaluate(()=>TL.game.resize());
+  assert(await page.evaluate(()=>{const m=document.querySelector('.modal').getBoundingClientRect();return m.left>=0&&m.right<=innerWidth+1;}));
+  await page.screenshot({path:path.join(out,'citylink_compact.png')});
+  await page.setViewport({width:1280,height:720});
+  const state=await page.evaluate(()=>{
+    const g=TL.game;g.ui.closeModal(true);g.ui._resumeOnClose=false;g.state='play';g.resize();g.ui.showResume(false);
+    const before=g.hero.ctrl.pos.clone();g.input.keys.add('KeyW');for(let i=0;i<24;i++){g.tick(1/60);g.input.endFrame();}g.input.keys.delete('KeyW');
+    const moved=g.hero.ctrl.pos.distanceTo(before);g.pause(true);const stopped=g.hero.ctrl.pos.clone();for(let i=0;i<10;i++)g.tick(1/60);const paused=stopped.equals(g.hero.ctrl.pos);g.ui.closeModal(true);g.pause(false);
+    g.settings.reducedMotion=true;g.rig.kickNear(1,1);g.tick(1/60);const reduced=g.rig.nearKick===0;
+    const snapshot=g.save.snapshot();if(!snapshot.encounters||!snapshot.routes)throw Error('Missing new save branches');
+    const count=g.world.count;g.encounters.deserialize({completed:{rooftop:2,rescue:1,runaway:3}});const roundtrip=g.encounters.serialize();
+    if(g.encounters.completed.rooftop!==2||g.world.count!==count)throw Error('Encounter persistence changed world');
+    if(!g.encounters.start('rescue'))throw Error('Real roof rescue unavailable for E integration');
+    const a=g.encounters.active,c=g.hero.ctrl;c.teleport(a.target.x,a.target.y,a.target.z);c.grounded=true;c.groundCol=a.col;c.fsm.set(TL.TS.GROUND);
+    if(!g.encounters.canInteract())throw Error('Rescue pickup not reachable');
+    g.input.pressed.add('interact');g.input.pressed.add('tether');g.tick(1/60);g.input.endFrame();
+    const interaction=g.encounters.active?.phase==='carry'&&!c.tether.ropes.some(r=>r.active)&&!g.input.intent.tether;
+    if(!interaction)throw Error('E did not pick up civilian exclusively through game tick');g.encounters.cancel(true);
+    BENCH.render();return{moved,paused,reduced,roundtrip,interaction,errors:TL.errors};
+  });
+  assert(state.moved>.1);assert(state.paused&&state.reduced);assert.deepEqual(state.errors,[]);assert.deepEqual(page.errors,[]);
+  await page.screenshot({path:path.join(out,'gameplay_hud.png')});fs.writeFileSync(path.join(out,'integration.json'),JSON.stringify({rows,...state},null,2));
+  console.log('PASS built scan game: CITYLINK encounters, responsive dialog, real keyboard movement, pause, reduced motion, save integration, no runtime errors');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

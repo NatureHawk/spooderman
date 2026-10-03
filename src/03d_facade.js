@@ -57,8 +57,8 @@ TL.Facade = {
     if (!this.ok) return;
     const a = new Float32Array(g.attributes.position.count); let v = 0;
     for (const b of list) {
-      const s = this.start.get(b);
-      for (let k = 0; k < b.n; k++, v += 3) { const r = s === undefined ? 0 : this.triRec[s + k]; a[v] = a[v + 1] = a[v + 2] = r; }
+      const s = this.start.get(b._source||b);
+      for (let k = 0; k < b.n; k++, v += 3) { const r = s === undefined ? 0 : this.triRec[s + (b._triSource?b._triSource[k]:k)]; a[v] = a[v + 1] = a[v + 2] = r; }
     }
     g.setAttribute('aFacRec', new THREE.BufferAttribute(a, 1));
   },
@@ -255,7 +255,9 @@ TL.Facade.GLSL_MAP = `
     vec3 Rr = reflect(Vw, N3);
     float cosT = clamp(dot(-Vw, N3), 0.0, 1.0);
     float fres = facF0.g + (1.0 - facF0.g) * pow(1.0 - cosT, 5.0);
-    vec3 sky = Rr.y > 0.0 ? mix(uSkyH, uSkyZ, pow(clamp(Rr.y, 0.0, 1.0), 0.6)) : mix(uSkyH * 0.5, uSkyH * 0.12, clamp(-Rr.y * 2.5, 0.0, 1.0));
+    // Match sky and street at the horizon: a hard hemisphere switch draws a line across every facade.
+    vec3 sky = mix(uSkyH, uSkyZ, pow(clamp(Rr.y, 0.0, 1.0), 0.6));
+    sky = mix(sky, uSkyH * 0.12, smoothstep(0.0, 0.45, -Rr.y));
     vec3 tintR = typ == 3 ? mix(vec3(1.0), clamp(tint, 0.5, 1.6), 0.5) : vec3(1.0);
     facLamp += sky * tintR * fres * facGlass * (1.0 - 0.6 * litM) * 0.9;
     // ---- street level: storefronts / entrances / loading doors under this wall's first measured floor (graphics pass).

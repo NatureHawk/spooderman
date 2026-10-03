@@ -12,6 +12,23 @@
 'use strict';
 
 TL.Trees = {
+  // Adjacent LODs share complementary screen-door coverage in a narrow distance band.
+  // No transparent sorting, extra textures, or persistent transition allocations.
+  blend(distance, bounds, out = {}) {
+    for (let i = 0; i < bounds.length; i++) {
+      const width = Math.max(6, Math.min(24, bounds[i] * 0.08));
+      if (distance < bounds[i] - width) return Object.assign(out, { near: i, far: i, mix: 0 });
+      if (distance < bounds[i] + width) {
+        const t = (distance - bounds[i] + width) / (2 * width);
+        return Object.assign(out, { near: i, far: i + 1, mix: t * t * (3 - 2 * t) });
+      }
+    }
+    return Object.assign(out, { near: bounds.length, far: bounds.length, mix: 0 });
+  },
+  dither: `
+    float tlTreeNoise = fract(52.9829189 * fract(dot(floor(gl_FragCoord.xy), vec2(0.06711056, 0.00583715))));
+    if (vTreeLod.y < 0.0 ? tlTreeNoise < vTreeLod.x : tlTreeNoise >= vTreeLod.x) discard;
+  `,
   /* -> { meta, models: [{ name, sp, H, R, col, lods: [{ bark, leaf }] }], atlas, bark: { sp: [map, normal] }, layout } */
   async load(step) {
     const X = TL.Extra;
@@ -66,7 +83,10 @@ TL.TreeMaterials = function (renderer, data) {
   const WIND_V = `
     attribute vec4 aW;
     uniform float uTime; uniform vec3 uWind;
-    varying float vAO;
+    varying float vAO; varying vec2 vTreeLod;
+    #ifdef USE_INSTANCING
+      attribute vec2 aTreeLod;
+    #endif
     vec3 tlWind(vec3 wp, vec3 ip, float scaleY) {
       float ph = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;
       float h = max(wp.y - ip.y, 0.0);
@@ -99,8 +119,10 @@ TL.TreeMaterials = function (renderer, data) {
   const patchV = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WIND_V)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vAO = aW.x;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vAO = aW.x; vTreeLod = vec2(1.0);\n #ifdef USE_INSTANCING\n vTreeLod = aTreeLod;\n #endif')
       .replace('#include <project_vertex>', PROJECT);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n varying vec2 vTreeLod;')
+      .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n' + TL.Trees.dither);
     // shadow / depth passes derive worldPosition from the instance transform again: keep them consistent
     sh.vertexShader = sh.vertexShader.replace('#include <worldpos_vertex>', `
       #if defined( USE_SHADOWMAP ) || defined( USE_ENVMAP ) || defined( USE_TRANSMISSION ) || defined( DISTANCE )
@@ -215,13 +237,16 @@ TL.TreeImpostors = {
     const g = new THREE.PlaneGeometry(1, 1);
     const aImp = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4); aImp.setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('aImp', aImp);
+    const fade = new THREE.InstancedBufferAttribute(new Float32Array(cap * 2), 2); fade.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('aTreeLod', fade);
     const mat = new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { tAtlas: { value: baked.rt.texture }, uSunC: mats.U.uSunC }]),
       vertexShader: `
-        attribute vec4 aImp;
+        attribute vec4 aImp; attribute vec2 aTreeLod; varying vec2 vTreeLod;
         varying vec2 vUv; varying vec3 vTint;
         #include <fog_pars_vertex>
         void main() {
+          vTreeLod = aTreeLod;
           vec3 base = instanceMatrix[3].xyz;
           float sx = length(instanceMatrix[0].xyz), sy = length(instanceMatrix[1].xyz);
           float yaw = atan(-instanceMatrix[0].z, instanceMatrix[0].x);
@@ -237,13 +262,14 @@ TL.TreeImpostors = {
           #include <fog_vertex>
         }`,
       fragmentShader: `
-        uniform sampler2D tAtlas; uniform vec3 uSunC;
+        uniform sampler2D tAtlas; uniform vec3 uSunC; varying vec2 vTreeLod;
         varying vec2 vUv; varying vec3 vTint;
         #include <common>
         #include <fog_pars_fragment>
         void main() {
           vec4 c = texture2D(tAtlas, vUv);
           if (c.a < 0.45) discard;
+          ${TL.Trees.dither}
           float day = clamp(length(uSunC), 0.0, 1.2);
           gl_FragColor = vec4(c.rgb * vTint * (0.34 + 0.66 * day), 1.0);
           #include <tonemapping_fragment>
@@ -257,7 +283,7 @@ TL.TreeImpostors = {
     mesh.count = 0; mesh.frustumCulled = false; mesh.matrixAutoUpdate = false; mesh.castShadow = false; mesh.receiveShadow = false; mesh.name = 'TREE_IMPOSTORS';
     mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
     scene.add(mesh);
-    return { mesh, aImp, info: baked.info, rt: baked.rt };
+    return { mesh, aImp, fade, info: baked.info, rt: baked.rt };
   },
 };
 
@@ -297,11 +323,14 @@ TL.TreeField = class {
         const cap = Math.max(1, counts[mi]);
         const im = new THREE.InstancedBufferAttribute(new Float32Array(cap * 16), 16); im.setUsage(THREE.DynamicDrawUsage);
         const ic = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3); ic.setUsage(THREE.DynamicDrawUsage);
-        const G = { im, ic, n: 0, parts: [] };
+        const fade = new THREE.InstancedBufferAttribute(new Float32Array(cap * 2), 2); fade.setUsage(THREE.DynamicDrawUsage);
+        const G = { im, ic, fade, n: 0, parts: [] };
         const L = md.lods[l];
         for (const key of ['bark', 'leaf']) {
           const g = L[key]; if (!g) continue;
-          const mesh = new THREE.InstancedMesh(g, key === 'leaf' ? this.mats.leaf : this.mats.bark[md.sp], cap);
+          const view = TL.CellInstancing.view(g, g.boundingSphere);
+          view.setAttribute('aTreeLod', fade);
+          const mesh = new THREE.InstancedMesh(view, key === 'leaf' ? this.mats.leaf : this.mats.bark[md.sp], cap);
           mesh.instanceMatrix = im;
           if (key === 'leaf') mesh.instanceColor = ic;
           mesh.count = 0; mesh.frustumCulled = false; mesh.matrixAutoUpdate = false;
@@ -347,7 +376,7 @@ TL.TreeField = class {
     this._frustum.setFromProjectionMatrix(this._pm);
     const F = this._frustum.planes, list = this.list, bs = this.bs, mat = this.mat, tint = this.tint;
     for (const row of this.groups) for (const G of row) G.n = 0;
-    const d0 = this.d0, d1 = this.d1, d2 = this.imp ? this.d2 : 1e9, dM = this.dMax, H = 4, bounds = [d0, d1, d2];
+    const d0 = this.d0, d1 = this.d1, d2 = this.imp ? this.d2 : 1e9, dM = this.dMax, bounds = this.imp ? [d0, d1, d2] : [d0, d1];
     let vis = 0; const lc = this.stats.lod; lc[0] = lc[1] = lc[2] = lc[3] = 0;
     let ni = 0; const IM = this.imp, mod = this.data.models;
     for (let i = 0; i < list.length; i++) {
@@ -357,30 +386,42 @@ TL.TreeField = class {
       let inside = true;
       for (let k = 0; k < 6; k++) { const pl = F[k]; if (pl.normal.x * x + pl.normal.y * y + pl.normal.z * z + pl.constant < -r) { inside = false; break; } }
       if (!inside && d > 30) { this.lod[i] = -1; continue; }         // near trees stay for their shadows
-      // hysteresis around the LOD boundaries
-      const prev = this.lod[i];
-      let l = d < d0 ? 0 : d < d1 ? 1 : d < d2 ? 2 : 3;
-      if (prev >= 0 && l !== prev) { const b = bounds[l > prev ? prev : l]; if (Math.abs(d - b) < H * (b > 200 ? 5 : 1)) l = prev; }
-      this.lod[i] = l;
-      if (l === 3) {                                                  // far: baked billboard
-        IM.mesh.instanceMatrix.array.set(mat.subarray(i * 16, i * 16 + 16), ni * 16);
-        IM.mesh.instanceColor.array[ni * 3] = tint[i * 3]; IM.mesh.instanceColor.array[ni * 3 + 1] = tint[i * 3 + 1]; IM.mesh.instanceColor.array[ni * 3 + 2] = tint[i * 3 + 2];
-        const inf = IM.info[list[i].m]; IM.aImp.array[ni * 4] = list[i].m; IM.aImp.array[ni * 4 + 1] = inf.half; IM.aImp.array[ni * 4 + 2] = inf.ymid;
-        ni++; vis++; lc[3]++; continue;
+      const blend = TL.Trees.blend(d, bounds, this._blend || (this._blend = {}));
+      this.lod[i] = blend.mix > 0.5 ? blend.far : blend.near;
+      for (let side = 0; side < (blend.near === blend.far ? 1 : 2); side++) {
+        const l = side ? blend.far : blend.near;
+        const amount = blend.near === blend.far ? 1 : blend.mix;
+        const role = blend.near === blend.far || side ? 1 : -1;
+        if (l === 3) {
+          IM.mesh.instanceMatrix.array.set(mat.subarray(i * 16, i * 16 + 16), ni * 16);
+          IM.mesh.instanceColor.array.set(tint.subarray(i * 3, i * 3 + 3), ni * 3);
+          const inf = IM.info[list[i].m]; IM.aImp.array[ni * 4] = list[i].m; IM.aImp.array[ni * 4 + 1] = inf.half; IM.aImp.array[ni * 4 + 2] = inf.ymid;
+          IM.fade.array[ni * 2] = amount; IM.fade.array[ni * 2 + 1] = role;
+          ni++; lc[3]++; continue;
+        }
+        const G = this.groups[list[i].m][l], o = G.n++;
+        G.im.array.set(mat.subarray(i * 16, i * 16 + 16), o * 16);
+        G.ic.array.set(tint.subarray(i * 3, i * 3 + 3), o * 3);
+        G.fade.array[o * 2] = amount; G.fade.array[o * 2 + 1] = role;
+        lc[l]++;
       }
-      const G = this.groups[list[i].m][l]; const o = G.n++;
-      G.im.array.set(mat.subarray(i * 16, i * 16 + 16), o * 16);
-      G.ic.array[o * 3] = tint[i * 3]; G.ic.array[o * 3 + 1] = tint[i * 3 + 1]; G.ic.array[o * 3 + 2] = tint[i * 3 + 2];
-      vis++; lc[l]++;
+      vis++;
     }
     for (const row of this.groups) for (const G of row) {
       for (const m of G.parts) m.count = G.n;
-      if (G.n) { G.im.needsUpdate = true; G.ic.needsUpdate = true; G.im.updateRange.count = G.n * 16; G.ic.updateRange.count = G.n * 3; }
+      if (G.n) { G.im.needsUpdate = true; G.ic.needsUpdate = true; G.fade.needsUpdate = true; G.fade.updateRange.count = G.n * 2; G.im.updateRange.count = G.n * 16; G.ic.updateRange.count = G.n * 3; }
     }
-    if (IM) { IM.mesh.count = ni; IM.mesh.visible = ni > 0; if (ni) { IM.mesh.instanceMatrix.needsUpdate = true; IM.mesh.instanceColor.needsUpdate = true; IM.aImp.needsUpdate = true; IM.mesh.instanceMatrix.updateRange.count = ni * 16; IM.mesh.instanceColor.updateRange.count = ni * 3; IM.aImp.updateRange.count = ni * 4; } }
+    if (IM) { IM.mesh.count = ni; IM.mesh.visible = ni > 0; if (ni) { IM.mesh.instanceMatrix.needsUpdate = true; IM.mesh.instanceColor.needsUpdate = true; IM.aImp.needsUpdate = true; IM.fade.needsUpdate = true; IM.fade.updateRange.count = ni * 2; IM.mesh.instanceMatrix.updateRange.count = ni * 16; IM.mesh.instanceColor.updateRange.count = ni * 3; IM.aImp.updateRange.count = ni * 4; } }
     this.stats.visible = vis;
   }
-  dispose() { for (const m of this.meshes) { this.scene.remove(m); m.dispose && m.dispose(); } if (this.imp) { this.scene.remove(this.imp.mesh); this.imp.rt.dispose(); } }
+  dispose() {
+    for (const m of this.meshes) { this.scene.remove(m); m.dispose && m.dispose(); m.geometry.dispose(); }
+    if (this.imp) { this.scene.remove(this.imp.mesh); this.imp.mesh.dispose(); this.imp.mesh.geometry.dispose(); this.imp.mesh.material.dispose(); this.imp.rt.dispose(); }
+    const materials = new Set([this.mats.leaf, this.mats.leafDepth, this.mats.barkDepth, ...Object.values(this.mats.bark)]), textures = new Set();
+    for (const m of materials) { for (const value of Object.values(m)) if (value && value.isTexture) textures.add(value); m.dispose(); }
+    for (const texture of textures) texture.dispose();
+    this.meshes.length = 0; this.groups.length = 0; this.imp = null;
+  }
 };
 
 /* ------------------------------------------------------------------ scan-world hooks */

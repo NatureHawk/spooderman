@@ -81,7 +81,8 @@ float rpWin; vec3 rpAlb;`)
   vec3 rpV = normalize(vViewPosition), rpN = normalize(normal);
   vec3 rpR = inverseTransformDirection(reflect(-rpV, rpN), viewMatrix);
   float rpF = 0.08 + 0.92 * pow(1.0 - clamp(abs(dot(rpN, rpV)), 0.0, 1.0), 5.0);
-  vec3 rpSky = rpR.y > 0.0 ? mix(uSkyH, uSkyZ, pow(clamp(rpR.y, 0.0, 1.0), 0.6)) : uSkyH * mix(0.45, 0.15, clamp(-rpR.y * 2.5, 0.0, 1.0));
+  vec3 rpSky = mix(uSkyH, uSkyZ, pow(clamp(rpR.y, 0.0, 1.0), 0.6));
+  rpSky = mix(rpSky, uSkyH * 0.15, smoothstep(0.0, 0.45, -rpR.y));
   totalEmissiveRadiance += rpSky * (0.22 + 0.6 * rpF) * rpWin * (1.0 - 0.85 * smoothstep(0.05, 0.6, uNight));
   vec3 cell = floor(vRWP / vec3(1.5, 3.4, 1.5));
   float hsh = rpHash(cell), lit = step(hsh, 0.28) * smoothstep(0.05, 0.6, uNight);

@@ -234,3 +234,44 @@ TL.AerialMotion = {
   }
 };
 
+
+/* Small, state-driven weight shifts and an actual reachable free-hand skim.
+   No procedural force or arm deployment is authored here. */
+TL.TraversalExpression={
+  update(an,h,dt,iks,toModel,D,onSurface){
+    const speed=h.vel.length(),heading=Math.atan2(h.vel.x,h.vel.z),previous=an.expressionHeading;
+    const airborne=[TL.TS.AIR,TL.TS.SWING,TL.TS.DIVE,TL.TS.GLIDE].includes(h.state);
+    const turn=previous===undefined||speed<5?0:TL.clamp(TL.wrapAngle(heading-previous)/Math.max(dt,.001),-2,2);
+    an.expressionHeading=heading;an.expressionTurn=TL.damp(an.expressionTurn||0,airborne||onSurface?turn:0,8,dt);
+    const f=h.feedback,load=f?f.load:0;
+    an.skimCool=Math.max(0,(an.skimCool||0)-dt);an.skim=null;
+    const eligible=airborne&&!onSurface&&!an.rel&&!an.trick&&!an.action&&!h.reference?.action&&speed>7&&f&&f.clearance<.85&&Math.abs(f.nearNormal.y)<.5;
+    if(!eligible)an.skimTime=0;
+    else{
+      const held=new Set(iks.map(k=>k.hand)),rig=an.rig;
+      let best=null;
+      for(const [side,sg]of [['L',1],['R',-1]])if(!held.has(side)){
+        const shoulder=rig.P['uarm'+side].clone().applyQuaternion(an.rootQ).add(an.meshPos),reach=rig.upperArm+rig.foreArm;
+        const hit=h.world.raycast(shoulder.x,shoulder.y,shoulder.z,f.nearNormal.x,f.nearNormal.y,f.nearNormal.z,reach*.96,
+          c=>c.solid&&c===f.nearCollider,null,{noGround:true});
+        if(hit&&(!best||hit.t<best.d))best={side,sg,d:hit.t,p:new THREE.Vector3(hit.x,hit.y,hit.z).addScaledVector(f.nearNormal,-.035),normal:f.nearNormal.clone()};
+      }
+      if(best&&(an.skimTime>0||an.skimCool<=0)){
+        an.skimTime=(an.skimTime||0)+dt;const t=an.skimTime;
+        if(t<.32){
+          best.w=TL.smooth(0,.07,t)*(1-TL.smooth(.2,.32,t));an.skim=best;
+          iks.push({hand:best.side,t:toModel(best.p),reach:.98,pole:D(best.sg,-.3,-.5),w:best.w,stiff:32,exact:true});
+        }else{an.skimTime=0;an.skimCool=1.1;}
+      }else an.skimTime=0;
+    }
+    return{twist:an.expressionTurn*.085,shift:an.expressionTurn*-.012,loadLean:h.state===TL.TS.SWING?TL.clamp(f?.loadRate||0,0,1)*.035:0,loadDrop:h.state===TL.TS.SWING?load*.015:0};
+  },
+  plant(an){
+    const s=an.skim;if(!s||s.w<.01)return;const rig=an.rig;
+    for(const n of rig.order)rig.target[n].copy(rig.cur[n]);rig.hipsOffT.copy(rig.hipsOff);rig.hipsQT.copy(rig.hipsQ);
+    const local=s.p.clone().sub(an.meshPos).applyQuaternion(an.rootQ.clone().invert()),a=new THREE.Vector3(),b=new THREE.Vector3();
+    rig.ik2(rig.P['uarm'+s.side],local,rig.upperArm,rig.foreArm,TL.dirv(s.sg,-.3,-.5),a,b);
+    rig.set('uarm'+s.side,rig.cur['uarm'+s.side].clone().lerp(a,s.w).normalize());
+    rig.set('farm'+s.side,rig.cur['farm'+s.side].clone().lerp(b,s.w).normalize());rig.set('hand'+s.side,b);rig.apply(0);
+  }
+};

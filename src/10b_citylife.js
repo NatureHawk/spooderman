@@ -103,7 +103,7 @@ TL.CityLife = class {
     }
   }
   startIncident(kind) {
-    const g=this.game,h=g.hero.ctrl;if(this.incident||g.missions.active||g.missions.crime||g.ai.inCombat)return false;
+    const g=this.game,h=g.hero.ctrl;if(this.incident||g.missions.active||g.missions.crime||g.routes?.active||g.encounters?.active||g.ai.inCombat)return false;
     let I={kind,state:'available',t:0,progress:0,announced:false};
     if(kind==='street'){
       const v=g.traffic.vehicles.find(v=>!v.runaway&&!v.incident&&v.speed<4&&v.s>Math.min(6,v.seg.len*.2)&&v.s<v.seg.len-Math.min(6,v.seg.len*.2)&&v.pos.distanceTo(h.pos)>25&&v.pos.distanceTo(h.pos)<140);
@@ -155,6 +155,7 @@ TL.CityLife = class {
     this.incident=I;return true;
   }
   canAssist() {
+    if(this.game.routes?.active||this.game.encounters?.active)return false;
     const I=this.incident,h=this.game.hero.ctrl;
     return !!I&&I.state==='available'&&h.pos.distanceTo(I.target)<7&&h.vel.length()<3&&
       (h.grounded||[TL.TS.GROUND,TL.TS.PERCH].includes(h.state))&&this.visible(h.pos,I.target);
@@ -176,7 +177,7 @@ TL.CityLife = class {
       for(let k=0;k<3;k++){const n=(this.nextKind+k)%3;if(this.startIncident(kinds[n])){this.nextKind=(n+1)%3;break;}}
       this.incidentT=12;}return;}
     I.t+=dt;
-    if(g.missions.active||g.missions.crime||g.ai.inCombat||I.t>110||h.pos.distanceTo(I.pos)>210){this.cleanupIncident('abandoned');return;}
+    if(g.missions.active||g.missions.crime||g.routes?.active||g.encounters?.active||g.ai.inCombat||I.t>110||h.pos.distanceTo(I.pos)>210){this.cleanupIncident('abandoned');return;}
     if(I.worker&&(!I.worker.alive||!I.worker.skin||!g.streamer.roofState?.analyses.includes(I.worker.site.A))||I.vehicle&&(!I.vehicle.active||!I.vehicle.col||I.vehicle.col.id!==I.vehicleId)){this.cleanupIncident('unavailable');return;}
     if(I.state==='success'){if(I.worker)g.crowd.render(I.worker,dt,false);if(I.t>5)this.cleanupIncident('success');return;}
     if(I.vehicle){

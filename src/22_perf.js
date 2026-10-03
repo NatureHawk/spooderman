@@ -12,6 +12,22 @@
 
 TL.Perf = {
   PROBE_LAYER: 5,
+  secondaryScale: 1, frameMs: 16.7, _slow: 0, _fast: 0,
+  // Real requestAnimationFrame intervals, supplied by Game.loop. Ignore tab returns
+  // and debugger pauses; require sustained pressure and slow recovery to avoid pumping.
+  observeFrame(dt) {
+    if (!(dt > 0) || dt > 0.25) return;
+    const ms = dt * 1000;
+    this.frameMs += (ms - this.frameMs) * 0.04;
+    if (this.frameMs > 27) { this._slow++; this._fast = 0; }
+    else if (this.frameMs < 21) { this._fast++; this._slow = 0; }
+    else { this._slow = Math.max(0, this._slow - 1); this._fast = 0; }
+    if (this._slow > 45) { this.secondaryScale = this.frameMs > 42 ? 3 : 2; this._slow = 0; }
+    if (this._fast > 180) { this.secondaryScale = Math.max(1, this.secondaryScale - 1); this._fast = 0; }
+  },
+  secondaryBusy(g) {
+    return !!(g && g.streamer && g.streamer.lowRender && g.streamer.lowRender.preparedThisFrame > 0);
+  },
   probeMinRadius: 20,                                  // metres: static meshes at least this big are probe scenery
   /* put the probe-worthy objects on the probe layer (cheap; re-run every full cube so streamed tiles join) */
   tagProbe(g) {
@@ -65,9 +81,7 @@ TL.Perf = {
         for (let f = 0; f < 6; f++) R.captureFace(r, g.scene, g.camera, f);
         // the first full cube replaces scene.environment with the probe's prefiltered map, whose size differs from the
         // sky map's: every standard material gets a new shader key then. Do that swap now and compile against it.
-        R.envRT = R.pmrem.fromCubemap(R.blurCube(r).texture, R.envRT);
-        g.scene.environment = R.envRT.texture;
-        const P = R.U.tlProbeP.value; P.x = 1; P.z = 1; R._ready = true;
+        R.publish(r, g.scene);
         r.compile(g.scene, g.camera);
         for (let f = 0; f < 6; f++) R.captureFace(r, g.scene, g.camera, f);
         R.face = 0;

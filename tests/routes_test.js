@@ -158,5 +158,50 @@ test('free roam untouched without an active route (no markers, no freeze, no HUD
   const G = game([DEF]); for (let i = 0; i < 100; i++) G.g.routes.update(1 / 60);
   assert(!G.g.routes.active && !G.ctrl.frozen && G.g.routes.marks.length === 0);
 });
+test('personal best replay persists, slower runs keep it, faster runs replace it', () => {
+  const G=game([DEF]),r=G.g.routes,A=running(G);
+  travel(G,[V(0,5,0),V(0,5,30),V(0,5,40)],.5);G.ctrl.pos.set(0,1,60);G.ctrl.fsm.set(S.PERCH);r.update(1/60);
+  const first=JSON.stringify(r.best.t.replay),time=r.best.t.time;assert(r.best.t.replay.samples.length>2);assert.equal(r.best.t.replay.splits.length,3);
+  r.restart();r.active.phase='run';r.active.time=time+10;r.finish();assert.equal(JSON.stringify(r.best.t.replay),first);
+  r.restart();r.active.phase='run';r.active.time=time/2;r.finish();assert(r.best.t.time<time);assert.notEqual(JSON.stringify(r.best.t.replay),first);
+  const copy=game([DEF]).g.routes;copy.deserialize(JSON.parse(JSON.stringify(r.serialize())));assert.deepEqual(copy.best,r.best);
+});
+test('ghost samples stay bounded on a very long run and ghost never adds collision geometry', () => {
+  const G=game([DEF]),r=G.g.routes,A=running(G),count=G.g.world.count;
+  for(let i=0;i<30000;i++){A.time=i*.2;G.ctrl.pos.z=i*.01;r.recordSample();}
+  assert(A.samples.length<=1800);assert(A.sampleInterval>.15);A.time=6000;r.finish();r.restart();assert(r.ghost);assert.equal(G.g.world.count,count);
+  let disposed=0;r.ghost.children[0].geometry.addEventListener('dispose',()=>disposed++);r.exit();assert.equal(disposed,1);assert(!r.ghost);
+});
+test('legacy saves remain readable; malformed replay payloads are discarded without losing best times', () => {
+  const r=game([DEF]).g.routes;r.deserialize({best:{t:{time:5,score:8,medal:'gold',replay:{version:1,samples:[[0,1,2,3,0],[NaN,1,2,3,0]]}}}});
+  assert.equal(r.best.t.time,5);assert(!r.best.t.replay);
+  r.deserialize({best:{t:{time:5,score:8,medal:'gold'}}});assert.equal(r.best.t.time,5);
+});
+test('new game disposal removes route start markers and temporary guides', () => {
+  const G=game([DEF]),r=G.g.routes;running(G);let disposed=0;
+  for(const m of r.startMarks)m.g.traverse(o=>{if(o.geometry)o.geometry.addEventListener('dispose',()=>disposed++);});
+  r.dispose();assert.equal(r.startMarks.length,0);assert.equal(r.marks.length,0);assert(!r.active&&!G.ctrl.frozen);assert(disposed>=2);
+});
+test('high gate is an actual ordered alternate crossing and blocked approaches are rejected', () => {
+  const def=JSON.parse(JSON.stringify(DEF));def.id='street_canyon';def.cps[1]={kind:'gate',x:0,y:5,z:40,r:3,n:[0,1]};
+  const G=game([def]),A=running(G),r=G.g.routes;assert(A.alternatives[1]);
+  travel(G,[V(0,5,0),V(0,5,30),V(0,20,35),V(0,20,45)],.6);assert.equal(A.k,2);assert.equal(A.choices[1],1);
+  r.exit();G.g.world.addStatic(0,20,40,3,3,3,0,{kind:'building'});r.begin(def);assert(!r.active.alternatives[1]);
+});
+test('split comparison follows saved checkpoints', () => {
+  const G=game([DEF]),r=G.g.routes;r.best.t={time:20,score:1,medal:null,replay:{version:1,samples:[[0,0,0,0,0],[20,0,0,60,0]],splits:[5,10,20],choices:[0,0,0]}};
+  const A=running(G);travel(G,[V(0,5,0),V(0,5,30)],.5);assert(Math.abs(A.splitDelta-(A.splits[0]-5))<.01);
+});
+test('new mastery bonuses require moving contacts and swing distance, then diminish within caps', () => {
+  const G=game([DEF]),A=running(G),r=G.g.routes,h=G.ctrl;h.vel.set(0,0,24);h.fsm.set(S.WALL);h.wallCol={id:5};
+  for(let i=0;i<600;i++)r.scoreFrame(1/60,h);assert.equal(A.score.cat.wall,0);assert.equal(A.score.cat.flow,0);
+  h.pos.set(0,30,0);A.prev.copy(h.pos);
+  for(let i=0;i<80;i++){h.pos.z+=.4;r.scoreFrame(1/60,h);A.prev.copy(h.pos);}assert(A.score.cat.wall>0);
+  r.onHeroEvent(G.g.hero,'corner');assert(A.score.cat.corner>0);const corner=A.score.cat.corner;for(let i=0;i<100;i++)r.onHeroEvent(G.g.hero,'corner');assert.equal(A.score.cat.corner,corner);
+  h.fsm.set(S.SWING);h.grounded=false;h.swingWall=false;h.tether.main.attached=true;h.pos.y=4;A.prev.copy(h.pos);
+  for(let i=0;i<80;i++){h.pos.z+=.4;r.scoreFrame(1/60,h);A.prev.copy(h.pos);}assert(A.score.cat.low>0);
+  r.onHeroEvent(G.g.hero,'releaseboost',.7);assert(A.score.cat.release>0);const release=A.score.cat.release;r.onHeroEvent(G.g.hero,'releaseboost',.7);assert.equal(A.score.cat.release,release);
+  for(const cat of ['wall','corner','low','release']){for(let i=0;i<1000;i++)A.score.add(cat,100,'test',cat);assert(A.score.cat[cat]<=A.score.CAP[cat]);}
+});
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exitCode = 1;

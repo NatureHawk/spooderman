@@ -106,8 +106,9 @@ TL.Atmos.SKY_FRAG = `varying vec3 vD;
 ${TL.Atmos.SKY_GLSL}
 void main() {
   vec3 d = normalize( vD ), c;
-  if ( d.y >= 0.0 ) c = tlSky( d, CLOUD_OCT );
-  else c = uHor;                     // below the horizon: the fog colour, so the end of the water plane never shows
+  c = tlSky( d, CLOUD_OCT );
+  // Blend below the horizon into water-edge fog, preserving glow continuously at eye level.
+  c = mix( c, uHor, smoothstep( 0.0, 0.15, - d.y ) );
   gl_FragColor = linearToOutputTexel( vec4( c, 1.0 ) );
 }`;
 

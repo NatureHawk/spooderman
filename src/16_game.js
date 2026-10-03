@@ -170,9 +170,15 @@ TL.Input = class {
     } else { it.swingPressed = it.swingPressed || this.peek('swing'); it.swingHand = null; this.pendingSwingHand = null; }
     it.glideToggle = it.glideToggle || this.peek('glide');
     it.slingPressed = it.slingPressed || this.peek('sling');
-    it.tether = it.tether || (this.peek('tether') && !(this.game.hero && this.game.hero.ctrl.state === TL.TS.SWING) && !(this.game.ui && this.game.ui.promptActive) && !this.down('aim'));
+    const tetherEdge=this.peek('tether'),ctrl=this.game.hero?.ctrl,inSwing=ctrl?.state===TL.TS.SWING;
+    const canTether=!(this.game.ui&&this.game.ui.promptActive)&&!this.down('aim');
+    // E deliberately enters an aligned open passage from a live swing. In open
+    // sky it keeps its existing held-reel / lateral corner-tether meaning.
+    const swingGate=tetherEdge&&inSwing&&canTether&&TL.ReferenceTraversal?.passage(ctrl,it);
+    it.tether=it.tether||(tetherEdge&&canTether&&(!inSwing||!!swingGate));
+    if(swingGate){it.cornerTether=false;it.reelIn=0;}
     this.pressed.delete('jump'); this.pressed.delete('swing'); this.pressed.delete('glide'); this.pressed.delete('sling');
-    if (it.tether || it.cornerTether) this.pressed.delete('tether');
+    if (it.tether || it.cornerTether || (tetherEdge&&inSwing)) this.pressed.delete('tether');
   }
   clearEdges(it) { it.spiderJump=false;it.spiderDash=false;it.wingDodge=false;it.cornerTether=false; it.jump = false; it.swingPressed = false; it.swingHand = null; it.glideToggle = false; it.slingPressed = false; it.tether = false; }
   endFrame() {
@@ -433,6 +439,12 @@ TL.Game = class {
   }
   /* ---------------------------------------------------------------- new game / continue */
   startGame(opts) {
+    if(this.encounters)this.encounters.cancel(true);
+    if(this.routes){if(this.routes.dispose)this.routes.dispose();else this.routes.exit();this.routes=null;}
+    if(this.streamer?.facadeRepairState)TL.FacadeRepairs.dispose(this.streamer);
+    if(this.streamer?.constructionCraneState)TL.ConstructionCranes.dispose(this.streamer);
+    if(this.streamer?.finishedTowerState)TL.FinishedTowers.dispose(this.streamer);
+    if(this.streamer?.constructionState)TL.Construction.dispose(this.streamer);
     opts = opts || {};
     const data = opts.data || null;
     this.seed = (data && data.seed) || opts.seed || this.seed;
@@ -443,6 +455,7 @@ TL.Game = class {
     this.env = new TL.Environment(this);
     this.buildWater();
     this.streamer = this.scanMode ? new TL.ScanWorld(this) : new TL.WorldStreamer(this);
+    if(this.streamer.constructionCraneState)this.streamer.constructionCraneState.physicsDriven=true;
     this.streamer.waterMat = this.waterMat;
     this.applyQuality(this.settings.quality);
     this.rig = new TL.CameraRig(this.camera, this.world); this.rig.settings = this.settings;
@@ -479,8 +492,8 @@ TL.Game = class {
       this.missions.defs = {}; this.missions.activities = []; this.missions.caches = []; this.missions.feed = [];
       this.missions.crimeT = Infinity; this.ai.ambientT = Infinity;
     }
-    if (this.routes) this.routes.exit();
     this.routes = TL.RouteChallenges ? new TL.RouteChallenges(this) : null;   // traversal routes (scan city)
+    this.encounters=TL.TraversalEncounters?new TL.TraversalEncounters(this):null;
     if (TL.installExtras) { TL.installExtras(this); TL.installWeatherExtras(this); }
     if (!this._catchBus) {
       // a strong web catch: restrained creak and a small camera give (respects reduced motion)
@@ -656,6 +669,7 @@ TL.Game = class {
     requestAnimationFrame(this.loop);
     let dt = (t - this.last) / 1000; this.last = t;
     if (!(dt > 0)) dt = 1 / 60;
+    if(this.state==='play'&&!this.photoMode)TL.Perf?.observeFrame?.(dt);
     dt = Math.min(dt, 0.1);
     this.fpsAcc += dt; this.fpsN++;
     if (this.fpsAcc > 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
@@ -686,6 +700,10 @@ TL.Game = class {
     if (this.hitStop > 0) { this.hitStop -= dt; simDt *= 0.08; }
     const hero = this.hero, c = hero.ctrl;
     const it = inp.buildIntent(this.rig);
+    // A nearby route start owns E before discovery prompts or the point-launch edge.
+    const routeStart=inp.peek('interact')&&this.routes?.nearStart();
+    if(routeStart){this.routes.begin(routeStart);inp.consume('interact');inp.pressed.delete('tether');it.tether=false;}
+    else if(this.encounters?.canInteract()&&inp.peek('interact')){this.encounters.interact();inp.consume('interact');inp.pressed.delete('tether');it.tether=false;}
     // E keeps its traversal meaning everywhere except a visible, reachable rescue.
     if(this.cityLife?.canAssist()&&inp.peek('interact')){it.tether=false;inp.pressed.delete('tether');}
     // point launch target preview
@@ -700,12 +718,13 @@ TL.Game = class {
     if (playing && !this.switching) {
       const step = 1 / TL.C.PHYS_HZ;
       if (this.physPaused) {
-        if (this.stepOnce > 0) { this.stepOnce--; c.step(step, it); inp.clearEdges(it); }
+        if (this.stepOnce > 0) { this.stepOnce--; if(this.streamer.constructionCraneState)TL.ConstructionCranes.update(this.streamer,step);c.step(step, it); inp.clearEdges(it); }
         this.physAcc = 0;
       } else {
         this.physAcc += simDt;
         let n = 0;
         while (this.physAcc >= step && n < 12) {
+          if(this.streamer.constructionCraneState)TL.ConstructionCranes.update(this.streamer,step);
           c.step(step, it); inp.clearEdges(it);
           this.physAcc -= step; n++;
         }
@@ -726,6 +745,7 @@ TL.Game = class {
     if (this.traffic) this.traffic.update(simDt, focus);
     if (this.crowd) this.crowd.update(simDt, focus);
     if (this.ai) this.ai.update(simDt);
+    if(this.encounters)this.encounters.update(simDt);
     if (this.missions) this.missions.update(simDt);
     if (this.routes) this.routes.update(simDt);
     if (this.partner) this.partner.update(simDt);
@@ -734,7 +754,7 @@ TL.Game = class {
     hero.renderUpdate(simDt, alpha);   // game time: slow-mo and hit stop slow the animation with the physics
     for (const k in this.heroes) { const h = this.heroes[k]; if (h !== hero) { h.renderUpdate(simDt, 1); } }
     this.rig.combatFocus = this.combat && this.combat.focusPoint();
-    this.rig.update(dt, { pos: hero.renderPos, vel: c.vel, state: c.state, facing: c.facing, wallN: c.wallN, glide: c.glide,launch:c.launch,feedback:c.feedback,reference:c.reference });
+    this.rig.update(dt, { pos: hero.renderPos, vel: c.vel, state: c.state, facing: c.facing, wallN: c.wallN, swingWall:c.swingWall,glide: c.glide,launch:c.launch,feedback:c.feedback,reference:c.reference });
     this.particles.update(simDt);
     this.launchFX.update(simDt,hero);
     this.rain.update(dt, this.camera.position, this.wind.base, this.env.rain * (this.quality === 'low' ? 0.4 : 1));

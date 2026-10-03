@@ -1,0 +1,13 @@
+'use strict';
+const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert');
+const harness=process.env.TL_HARNESS||path.join(process.env.LOCALAPPDATA,'Temp/claude/c--Users-PRIYANSHU-Pictures-spooderman/3daa858f-ae71-47ed-a4cc-f3ea76aee61c/scratchpad/harness');global.THREE=require(path.join(harness,'node_modules/three/build/three.cjs'));
+for(const f of ['00_core.js','02_collision.js'])vm.runInThisContext(fs.readFileSync(path.join(__dirname,'../src',f),'utf8'));TL.V.init();
+let described=0;TL.ScanHooks={load:[],build:[],nycTile:(world,g,list)=>{const b=list[0];assert(world.data.nyc.buildings.includes(b._source));assert(b._constructionCut>0);assert.equal(b._triSource.length,b.n);g.setAttribute('aFacRec',new THREE.BufferAttribute(new Float32Array(b.n*3).fill(100),1));described++;}};
+vm.runInThisContext(fs.readFileSync(path.join(__dirname,'../src/03q_facade_repairs.js'),'utf8'));
+const b=fs.readFileSync(path.join(__dirname,'../build/nyc.bin')),material=new THREE.MeshBasicMaterial(),world={scene:new THREE.Scene(),world:new TL.CollisionWorld(),nycMat:material,data:{nyc:require('../build/nyc.json'),nycBin:b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)},replaced:new Set()};
+const original=JSON.stringify(world.data.nyc);TL.FacadeRepairs.asset=require('../evidence/construction/facade_repairs.json');const S=TL.FacadeRepairs.build(world);assert.equal(S.buildings.length,25);assert.equal(S.meshes.length,described);assert.strictEqual(TL.FacadeRepairs.build(world),S);assert.equal(JSON.stringify(world.data.nyc),original,'original source metadata untouched');
+let sampled=0;for(const row of TL.FacadeRepairs.asset.buildings){const mesh=S.meshes.find(m=>m.userData.facadeRepairBid===row.bid);if(!row.positions.length){assert(!mesh);continue;}assert.strictEqual(mesh.material,material);assert(mesh.geometry.attributes.aFacRec.array.every(v=>v===0),'missing walls use real per-building rule-window shader');
+ for(const e of row.segments){const x=(e.a[0]+e.b[0])/2,y=(e.bottom+e.top)/2,z=(e.a[1]+e.b[1])/2,n=e.normal;const hit=world.world.raycast(x+n[0],y,z+n[2],-n[0],0,-n[2],1.2,c=>c===S.colliders[sampled],null,{noGround:true});assert(hit,'repair collision follows actual missing facade');assert(Math.abs(hit.t-.96)<.081);sampled++;}
+}
+let sharedDisposed=false;material.addEventListener('dispose',()=>sharedDisposed=true);TL.FacadeRepairs.dispose(world);assert.equal(world.scene.children.length,0);assert.equal(world.world.count,0);assert(!sharedDisposed,'shared city facade material stays alive');console.log('PASS25 additive facade meshes, '+sampled+' exact boundary collision rays, original metadata preserved, style interface and complete disposal');
+

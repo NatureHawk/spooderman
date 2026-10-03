@@ -11,10 +11,14 @@ const BUILD = process.env.TL_BUILD_DIR ? path.resolve(ROOT, process.env.TL_BUILD
 const order = ['00_core.js', '01_assets.js', '02_collision.js', '03_city.js', '03b_scan.js', '03c_trees.js', '03d_facade.js', '03e_streets.js', '03f_replace.js', '03g_rooftops.js', '03h_roofobstacles.js', '04_physics.js', '04b_contact.js', '05_camera.js', '06b_motion.js', '06_anim.js', '06c_glide.js', '06d_contact_anim.js', '07_vfx.js',
   '08_combat.js', '09_ai.js', '10_crowd.js', '10b_citylife.js', '11_traffic.js', '12_missions.js', '12b_routes.js', '13_ui.js', '14_audio.js', '15_save.js', '16_game.js', '17_extras.js', '18_comic.js', '21_props.js'];
 order.splice(order.indexOf('04b_contact.js')+1,0,'04c_reference.js');
+order.splice(order.indexOf('12b_routes.js')+1,0,'12c_encounters.js');
+order.splice(order.indexOf('12c_encounters.js')+1,0,'12d_worksites.js');
 order.splice(order.indexOf('03h_roofobstacles.js')+1,0,'03i_traversal_supports.js');
 order.splice(order.indexOf('06d_contact_anim.js')+1,0,'06e_reference_anim.js');
 // graphics pass: render-time culling for the citywide instanced kits; runs after every module that adds rooftop meshes
 order.splice(order.indexOf(order.includes('03i_traversal_supports.js') ? '03i_traversal_supports.js' : '03h_roofobstacles.js') + 1, 0, '03j_render_cull.js');
+order.splice(order.indexOf('03j_render_cull.js'),0,'03n_construction.js');
+order.splice(order.indexOf('03n_construction.js')+1,0,'03p_finished_towers.js','03o_construction_cranes.js','03q_facade_repairs.js');
 order.splice(order.indexOf('03j_render_cull.js')+1,0,'03k_low_manhattan.js');
 order.splice(order.indexOf('18_comic.js')+1,0,'20_atmos.js');
 // rendering pass: AO / bloom / grade / reflections; wraps TL.Comic.render, so it loads after the comic + atmosphere modules
@@ -27,6 +31,8 @@ order.splice(order.indexOf('10_crowd.js')+1,0,'10c_crowdnav.js','10d_crowdlife.j
 order.splice(order.indexOf('10e_npcposes.js')+1,0,'03l_lifeprops.js', '03m_waterfront.js');   // after the crowd roadmap: its build hook reads world.crowdNav;   // carts, stoops, shelters, waterfront kit
 // building materials + interiors (03l_buildings.js) right after the facade look it extends
 order.splice(order.indexOf('03d_facade.js')+1,0,'03l_buildings.js');
+// soundtrack player for the user's music/*.mp3 (embedded below), hooks the audio manager
+order.splice(order.indexOf('14_audio.js')+1,0,'14b_music.js');
 // opt-in extra modules appended after the core (TL_EXTRA_MODULES=19_multi.js for THREADLINE_multi.html; see tools/build_multi.js)
 if (process.env.TL_EXTRA_MODULES) order.push(...process.env.TL_EXTRA_MODULES.split(',').map((s) => s.trim()).filter(Boolean));
 let code = '';
@@ -96,6 +102,14 @@ for (const id of ['people','props']) {
   html = html.replace('</head>',()=>tags+'</head>');
 }
 if(fs.existsSync(B('props_credits.json'))) html=html.replace('</head>',()=>'<script type="application/json" id="tl-props-credits">'+fs.readFileSync(B('props_credits.json'),'utf8').replace(/</g,'\\u003c')+'</script></head>');
+// soundtrack: every music/*.mp3 embedded as base64 (decoded to a blob URL at runtime by 14b_music.js)
+{
+  const MD = path.join(ROOT, 'music'), esc = (t) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const songs = fs.existsSync(MD) ? fs.readdirSync(MD).filter((f) => /\.mp3$/i.test(f)).sort() : [];
+  const tags = songs.map((f) => `<script type="application/octet-stream" class="tl-music" data-name="${esc(f)}">${fs.readFileSync(path.join(MD, f)).toString('base64')}</script>`).join('');
+  if (tags) html = html.replace('</head>', () => tags + '</head>');
+  if (songs.length) console.log('music:', songs.length, 'track(s)');
+}
 html = html.replace('/*ASSETS_JSON*/', () => json).replace('/*ASSETS_BIN*/', () => b64).replace('/*GAME_CODE*/', () => '"use strict";\n' + code);
 // extra data (trees, facade detail, ...): <build>/extra/* -> #tl-extra
 {
