@@ -9,9 +9,9 @@ async function open(opts) {
   opts = opts || {};
   const html = path.resolve(opts.html || path.join(__dirname, '../../THREADLINE.html'));
   const b = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, pipe: true, timeout: 180000,
-    args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--user-data-dir=' + path.join(process.env.TEMP, 'tl_life_profile_' + process.pid)] });
+    args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', ...(process.env.TL_GPU === 'nv' ? ['--force_high_performance_gpu'] : []), ...(process.env.TL_UNCAP ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : []), '--user-data-dir=' + path.join(process.env.TEMP, 'tl_life_profile_' + process.pid)] });
   const p = await b.newPage();
-  await p.setViewport({ width: opts.w || 1280, height: opts.h || 720 });
+  await p.setViewport({ width: opts.w || +process.env.TL_W || 1280, height: opts.h || +process.env.TL_H || 720, deviceScaleFactor: +process.env.TL_DSF || 1 });
   if (process.env.TL_STACKS) await p.evaluateOnNewDocument(() => { const ce = console.error; console.error = (...a) => ce.apply(console, [...a.map((x) => (x && x.message) || x), new Error().stack.split(String.fromCharCode(10)).slice(2, 9).join(' <- ')]); });
   p.on('pageerror', (e) => console.log('PAGE ERROR', e.message));
   p.on('console', async (m) => { if (m.type() === 'error' || m.type() === 'warning') { let t = m.text(); try { const a = await Promise.all(m.args().map((h) => h.evaluate((e) => (e && e.message) || String(e)).catch(() => ''))); t += ' | ' + a.join(' ').slice(0, 300); } catch (e) {} console.log('console.' + m.type(), t.slice(0, 400)); } });

@@ -20,6 +20,8 @@ order.splice(order.indexOf('18_comic.js')+1,0,'20_atmos.js');
 // rendering pass: AO / bloom / grade / reflections; wraps TL.Comic.render, so it loads after the comic + atmosphere modules
 order.splice(order.indexOf('20_atmos.js')+1,0,'21_post.js');
 order.splice(order.indexOf('21_post.js')+1,0,'21b_reflect.js');
+// v2 performance: probe sees only static scenery, shader warm-up during loading (src/22_perf.js)
+order.splice(order.indexOf('21b_reflect.js')+1,0,'22_perf.js');
 // life pass: pedestrian roadmap + behaviour + extra NPC poses (after the crowd), see tools/scan/crowd_nav.py
 order.splice(order.indexOf('10_crowd.js')+1,0,'10c_crowdnav.js','10d_crowdlife.js','10e_npcposes.js');
 order.splice(order.indexOf('10e_npcposes.js')+1,0,'03l_lifeprops.js', '03m_waterfront.js');   // after the crowd roadmap: its build hook reads world.crowdNav;   // carts, stoops, shelters, waterfront kit
